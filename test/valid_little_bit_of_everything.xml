@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <content>     string with whitespace     <sibling/></content>
+    <!-- <empty_element /> -->
+    <?pi and some meaningless content?>
+    <element attribute="value"
+             referenceAttribute="the &#x725B; says moo"
+             singleQuoteAttribute='have a " just for fun'><!-- comment --><![CDATA[<br/>]]></element>
+    <predefined_escapes>&lt;&gt;&amp;&apos;&quot;</predefined_escapes>
+    <numeric_references>&#60;&#62;&#38;&#39;&#34;</numeric_references>
+    <hex_references>&#x3C;&#x3E;&#x26;&#x27;&#x22;</hex_references>
+</root>

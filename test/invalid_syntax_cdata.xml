@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cdata>
+    <![CDAT[Oh no, I forgot the final A]]> <!-- Error expected on line 3, column 12 -->
+</cdata>

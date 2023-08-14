@@ -1,0 +1,6 @@
+<the_lord_of_the_rings>
+    <?xml version="1.0" encoding="UTF-8"?> <!-- Error expected on line 2, column 11 -->
+    <book>The Fellowship of the Ring</book>
+    <book>The Two Towers</book>
+    <book>The Return of the King</book>
+</the_lord_of_the_rings>

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<reference>
+    This reference is missing its terminating ; &quot <!-- Error expected on line 3, column 54 -->
+</reference>

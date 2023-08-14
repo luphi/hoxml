@@ -1,0 +1,4 @@
+﻿<!-- This document uses the UTF-8 BOM but specifies UTF-16 in its document declaration -->
+<?xml version="1.0" encoding="UTF-16"?> <!-- Error expected on line 2, column 39 -->
+<root>
+</root>

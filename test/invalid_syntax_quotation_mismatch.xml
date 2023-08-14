@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <invalid attribute="quotation mark mismatch'/> <!-- Error expected on line 3, column 52 -->
+</root>
