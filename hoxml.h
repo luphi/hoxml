@@ -53,10 +53,6 @@
     extern "C" {
 #endif /* __cpluspus */
 
-// LUKE TODO:
-// complete hoxml-example including vcproj
-// readme
-
 /***************/
 /* Definitions */
 
