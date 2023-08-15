@@ -385,7 +385,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
 
     uint8_t bytes_to_iterate = 0; /* Number of bytes iterated this loop - may need to be undone outside the loop */
     while (context->state >= HOXML_STATE_NONE && context->state <= HOXML_STATE_DONE) {
-        uint8_t bytes_remaining = (uint8_t)(context->xml_length - (context->iterator - context->xml));
+        size_t bytes_remaining = (size_t)(context->xml_length - (context->iterator - context->xml));
         uint8_t bytes_to_copy = (bytes_remaining <= 4 ? bytes_remaining : 4) - context->stream_length;
         if (bytes_to_copy < 4)
             memcpy((char*)&context->stream + context->stream_length, context->iterator, bytes_to_copy);
