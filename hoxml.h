@@ -241,7 +241,7 @@ HOXML_DECL void hoxml_init(hoxml_context_t* context, char* buffer, size_t buffer
     memset(context, 0, sizeof(hoxml_context_t)); /* Assign all values of the context to zero */
     context->buffer = buffer; /* Use the provided buffer */
     context->buffer_length = buffer_length; /* Remember the length of the provided buffer */
-    context->line = 1; /* This is meant to be human-readable and humans begin counting at one. */
+    context->line = 1; /* This is meant to be human-readable and humans begin counting at one */
     memset(buffer, 0, buffer_length); /* Fill the buffer with zeroes */
 }
 
@@ -505,7 +505,10 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
             if (c.decoded == '>') {
                 hoxml_append_terminator(context);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
-                    if (context->stack->flags & HOXML_FLAG_BEGUN) { /* If the element began after its name was found */
+                    /* If "element begun" has already been returned for this element and this element is not */
+                    /* self-closing (i.e. the element has the form "<tag ... />" where "..." may be attributes) */
+                    if (context->stack->flags & HOXML_FLAG_BEGUN &&
+                            !(context->stack->flags & HOXML_FLAG_EMPTY_ELEMENT)) {
                         hoxml_end_tag(context); /* Do not return, "element begun" was returned when the name ended */
                         hoxml_post_state_cleanup(context); /* Because hoxml_parse() won't be called, clean up now */
                     } else
