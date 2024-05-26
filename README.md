@@ -1,6 +1,6 @@
 # hoxml
 
-Header-Only XML parser written in portable C99. *hoxml* is non-validating but largely conforming (see [Limitations](#Limitations))
+Header-Only XML parser written in portable C99. *hoxml* is non-validating but largely conforming (see [Limitations](#limitations))
 
 
 ## Features
@@ -33,10 +33,10 @@ As usual with header-only libraries, the implementation's definition can be limi
 Allocate *hoxml*'s context object, which holds state and metadata information, and a buffer for hoxml to use.
 ``` c
 hoxml_context_t hoxml_context[1];
-void* buffer = malloc(1024);
+char* buffer = (char*)malloc(1024);
 hoxml_init(hoxml_context, buffer, 1024);
 ```
-The buffer length needed will depend on the amount of XML content, its depth, and various other minor factors. As a rule of thumb, a buffer equal in length to the content is likley enough. In cases where *hoxml* runs out of memory, more may be allocated (see [Error Recovery](#Error Recovery)).
+The buffer length needed will depend on the amount of XML content, its depth, and various other minor factors. As a rule of thumb, a buffer equal in length to the content is likley enough. In cases where *hoxml* runs out of memory, more may be allocated (see [Error Recovery](#error-recovery)).
 
 Continually call the parsing function until the *end of document* code is returned or an error code is returned.
 ``` c
@@ -65,7 +65,7 @@ while ((code = hoxml_parse(hoxml_context, content, content_length)) != HOXML_COD
     }
 }
 ```
-The return codes and what they mean are listed in [Return Codes](##Return Codes).
+The return codes and what they mean are listed in [Return Codes](#return-codes).
 
 The XML content string passed to `hoxml_parse()` may contain partial content. All that's required is the first call be done with the beginning of the document and subsequent parts be passed contiguously.
 The *unexpected EoF* error code will be returned when parsing has reached the end of the current content. At that time, pass the next portion(s) of content. The pointer passed may be the same; *hoxml* will determine if the content is new based on the ability to decode the first character of the passed string. If a single character is split between two content strings, *hoxml* will know and piece it together.
@@ -85,9 +85,9 @@ The *unexpected EoF* error code will be returned when parsing has reached the en
 
 `HOXML_CODE_PROCESSING_INSTRUCTION_END`: A processing instruction ended. Its content is available in the context object's `content` variable and its target is (still) available in the `tag` variable.
 
-`HOXML_ERROR_INSUFFICIENT_MEMORY`: All bytes of the buffer provided to hoxml are being used but more are required. This error is one of two that can be recovered ([Error Recovery](#Error Recovery)).
+`HOXML_ERROR_INSUFFICIENT_MEMORY`: All bytes of the buffer provided to hoxml are being used but more are required. This error is one of two that can be recovered (see [Error Recovery](#error-recovery)).
 
-`HOXML_ERROR_UNEXPECTED_EOF`: Parsing has reached the end of the XML content before the end of the document. This is determined by either decoding a null terminator (a zero) or by iterating up to the indicated length of the content. This error is one of two that can be recovered ([Error Recovery](#Error Recovery)).
+`HOXML_ERROR_UNEXPECTED_EOF`: Parsing has reached the end of the XML content before the end of the document. This is determined by either decoding a null terminator (a zero) or by iterating up to the indicated length of the content. This error is one of two that can be recovered (see [Error Recovery](#error-recovery)).
 
 `HOXML_ERROR_SYNTAX`: Invalid syntax. The `line` and `column` variables of the context object will contain the line and column, respectively, where the error was first noticed but not necessary where it exists.
 
