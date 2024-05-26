@@ -16,7 +16,7 @@ int main(int argc, char** argv) {
 
     /* hoxml initialization. Allocate the context object and buffer then call hoxml_init(). */
     hoxml_context_t hoxml_context[1];
-    void* buffer = malloc(content_length * 2);
+    char* buffer = (char*)malloc(content_length * 2);
     hoxml_init(hoxml_context, buffer, content_length * 2);
 
     /* Loop until the "end of document" code is returned */

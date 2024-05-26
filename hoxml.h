@@ -1,4 +1,4 @@
-/* Copyright (c) 2023 Luke Philipsen
+/* Copyright (c) 2024 Luke Philipsen
 
   Permission is hereby granted, free of charge, to any person obtaining
   a copy of this software and associated documentation files (the
@@ -49,7 +49,7 @@
     #define HOXML_DECL
 #endif /* HOXML_DECL */
 
-#ifdef __cpluspus
+#ifdef __cplusplus
     extern "C" {
 #endif /* __cpluspus */
 
@@ -75,6 +75,12 @@ typedef enum {
     HOXML_CODE_PROCESSING_INSTRUCTION_END /**< A processing instruction ended and its content is available. */
 } hoxml_code_t;
 
+typedef enum { HOXML_ENC_UNKNOWN = 0, HOXML_ENC_UTF_8, HOXML_ENC_UTF_16_LE, HOXML_ENC_UTF_16_BE } hoxml_enc_t;
+
+typedef enum { HOXML_CASE_SENSITIVE = 0, HOXML_CASE_INSENSITIVE } hoxml_case_t;
+
+typedef enum { HOXML_REF_TYPE_ENTITY = 0, HOXML_REF_TYPE_NUMERIC, HOXML_REF_TYPE_HEX } hoxml_ref_type_t;
+
 typedef struct hoxml_node hoxml_node_t; /* Forward declaration */
 
 /**
@@ -94,8 +100,9 @@ typedef struct {
     const char *xml, *iterator;
     char *buffer, *ref_start;
     hoxml_node_t* stack;
+    hoxml_enc_t encoding;
     int8_t state, post_state, return_state, err_return_state;
-    uint8_t encoding, stream_length;
+    uint8_t stream_length;
     uint32_t stream;
     size_t buffer_length, xml_length;
 } hoxml_context_t;
@@ -103,7 +110,7 @@ typedef struct {
 /**
  * Sets up the hoxml context object to begin parsing. Following this, call hoxml_parse() until
  * HOXML_CODE_END_OF_DOCUMENT or one of the error values is returned.
- * 
+ *
  * @param context Pointer to an allocated hoxml context object. This instance will be modified.
  * @param buffer A pointer to some contiguous block of memory for hoxml to use. This will also be modified, frequently.
  * @param buffer_length The length, in bytes, of the buffer handed to hoxml as the 'buffer' parameter.
@@ -132,7 +139,7 @@ HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, size_t buf
  * @param context An initialized hoxml context object. This should be treated as read-only until parsing is done.
  * @param xml XML content as a string.
  * @param xml_length Length of the XML content in bytes.
- * @return 
+ * @return
  */
 HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, size_t xml_length);
 
@@ -209,12 +216,6 @@ typedef enum {
     HOXML_POST_STATE_TAG_END,
     HOXML_POST_STATE_ATTRIBUTE_END,
 } hoxml_state_t;
-
-typedef enum { HOXML_ENC_UNKNOWN = 0, HOXML_ENC_UTF_8, HOXML_ENC_UTF_16_LE, HOXML_ENC_UTF_16_BE } hoxml_enc_t;
-
-typedef enum { HOXML_CASE_SENSITIVE = 0, HOXML_CASE_INSENSITIVE } hoxml_case_t;
-
-typedef enum { HOXML_REF_TYPE_ENTITY = 0, HOXML_REF_TYPE_NUMERIC, HOXML_REF_TYPE_HEX } hoxml_ref_type_t;
 
 enum hoxml_node_flags {
     HOXML_FLAG_END_TAG = 0x01, /* 0000 0001 - the node is a dedicated end tag (not an empty element) */
@@ -950,7 +951,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
 
 void hoxml_push_stack(hoxml_context_t* context) {
     /* If "allocating" a new node would overflow the buffer */
-    if ((context->stack == NULL && sizeof(hoxml_node_t) >= context->buffer_length) || (context->stack != NULL && 
+    if ((context->stack == NULL && sizeof(hoxml_node_t) >= context->buffer_length) || (context->stack != NULL &&
             context->stack->end + 1 + sizeof(hoxml_node_t) >= context->buffer + context->buffer_length)) {
         context->err_return_state = context->state;
         context->state = HOXML_STATE_ERROR_INSUFFICIENT_MEMORY;
