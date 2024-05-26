@@ -311,8 +311,9 @@ hoxml_char_t hoxml_dec_char(const char* str, size_t str_length, hoxml_enc_t enc)
 hoxml_char_t hoxml_enc_char(uint32_t value, hoxml_enc_t enc);
 char* hoxml_to_ascii(const char* str, hoxml_enc_t enc);
 uint32_t hoxml_strlen(char* str, hoxml_enc_t enc);
-uint8_t hoxml_strcmp(char* str1, hoxml_enc_t enc1, char* str2, hoxml_enc_t enc2, hoxml_case_t sens);
-char* hoxml_strstr(char* haystack, hoxml_enc_t enc_haystack, char* needle, hoxml_enc_t enc_needle, hoxml_case_t sens);
+uint8_t hoxml_strcmp(const char* str1, hoxml_enc_t enc1, const char* str2, hoxml_enc_t enc2, hoxml_case_t sensitivity);
+const char* hoxml_strstr(const char* haystack, hoxml_enc_t enc_haystack, const char* needle, hoxml_enc_t enc_needle,
+    hoxml_case_t sensitivity);
 #ifdef HOXML_DEBUG
     void hoxml_log(const char* message, ...);
     #define HOXML_LOG(s) hoxml_log(s);
@@ -793,10 +794,10 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
         case HOXML_STATE_PROCESSING_INSTRUCTION_CONTENT: /* Found space after a PI name, looking for '?' or chars */
             HOXML_LOG("HOXML_STATE_PROCESSING_INSTRUCTION_CONTENT")
             if (c.decoded == '?') { /* "?>" marks the end of a processing instruction */
-                char* declaration;
+                const char* declaration;
                 if ((declaration = hoxml_strstr(context->content, context->encoding, "encoding=", HOXML_ENC_UNKNOWN,
                         HOXML_CASE_SENSITIVE)) != NULL) {
-                    char* encoding;
+                    const char* encoding;
                     if ((encoding = hoxml_strstr(declaration, context->encoding, "\"", HOXML_ENC_UNKNOWN,
                             HOXML_CASE_SENSITIVE)) != NULL || (encoding = hoxml_strstr(declaration, context->encoding,
                             "'", HOXML_ENC_UNKNOWN, HOXML_CASE_SENSITIVE)) != NULL) {
@@ -818,7 +819,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                                     HOXML_CASE_INSENSITIVE) == 0 && hoxml_strcmp(encoding, context->encoding,
                                     "'UTF-8'", HOXML_ENC_UNKNOWN, HOXML_CASE_INSENSITIVE) == 0) {
                                 /* If the UTF-8 BOM was found but the encoding declaration was not "UTF-8" then we */
-                                /* have a contradiction and, therefore */
+                                /* have a contradiction and, therefore, an error */
                                 context->state = HOXML_STATE_ERROR_ENCODING;
                                 return HOXML_ERROR_ENCODING;
                             } break;
@@ -1334,12 +1335,12 @@ uint32_t hoxml_strlen(char* str, hoxml_enc_t enc) {
     return len;
 }
 
-uint8_t hoxml_strcmp(char* str1, hoxml_enc_t enc1, char* str2, hoxml_enc_t enc2, hoxml_case_t sens) {
-    char *it1 = str1, *it2 = str2;
+uint8_t hoxml_strcmp(const char* str1, hoxml_enc_t enc1, const char* str2, hoxml_enc_t enc2, hoxml_case_t sensitivity) {
+    const char *it1 = str1, *it2 = str2;
     hoxml_char_t c1 = hoxml_dec_char(it1, 65535, enc1), c2 = hoxml_dec_char(it2, 65535, enc2);
     while (c1.decoded != 0 && c2.decoded != 0) {
-        if ((sens == HOXML_CASE_INSENSITIVE && HOXML_TO_LOWER(c1.decoded) != HOXML_TO_LOWER(c2.decoded)) ||
-                (sens == HOXML_CASE_SENSITIVE && c1.decoded != c2.decoded))
+        if ((sensitivity == HOXML_CASE_INSENSITIVE && HOXML_TO_LOWER(c1.decoded) != HOXML_TO_LOWER(c2.decoded)) ||
+                (sensitivity == HOXML_CASE_SENSITIVE && c1.decoded != c2.decoded))
             return 0;
         it1 += c1.bytes;
         c1 = hoxml_dec_char(it1, 65535, enc1);
@@ -1349,11 +1350,13 @@ uint8_t hoxml_strcmp(char* str1, hoxml_enc_t enc1, char* str2, hoxml_enc_t enc2,
     return *it2 == '\0';
 }
 
-char* hoxml_strstr(char* haystack, hoxml_enc_t enc_haystack, char* needle, hoxml_enc_t enc_needle, hoxml_case_t sens) {
-    char *it_haystack = haystack, *it_needle = needle;
-    hoxml_char_t c = hoxml_dec_char(it_haystack, 65535, enc_haystack), cn = hoxml_dec_char(it_needle, 65535, enc_needle);
+const char* hoxml_strstr(const char* haystack, hoxml_enc_t enc_haystack, const char* needle, hoxml_enc_t enc_needle,
+        hoxml_case_t sensitivity) {
+    const char *it_haystack = haystack, *it_needle = needle;
+    hoxml_char_t c = hoxml_dec_char(it_haystack, 65535, enc_haystack),
+        cn = hoxml_dec_char(it_needle, 65535, enc_needle);
     while (c.decoded != 0) {
-        if (c.decoded == cn.decoded && hoxml_strcmp(it_haystack, enc_haystack, it_needle, enc_needle, sens) != 0)
+        if (c.decoded == cn.decoded && hoxml_strcmp(it_haystack, enc_haystack, it_needle, enc_needle, sensitivity) != 0)
             return it_haystack;
         it_haystack += c.bytes;
         c = hoxml_dec_char(it_haystack, 65535, enc_haystack);
