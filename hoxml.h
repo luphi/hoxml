@@ -60,12 +60,12 @@ typedef enum {
     HOXML_ERROR_TAG_MISMATCH = -3, /**< Close tag does not match the open tag (e.g. "<tag>" followed by "</tga>"). */
     HOXML_ERROR_INVALID_DOCUMENT_TYPE_DECLARATION = -2, /**< <!DOCTYPE> declaration not before the root element. */
     HOXML_ERROR_INVALID_DOCUMENT_DECLARATION = -1, /**< <?xml?> declaration not before the root element. */
-    HOXML_CODE_END_OF_DOCUMENT = 0, /**< The root element has been closed, parsing is done. */
-    HOXML_CODE_ELEMENT_BEGIN, /**< A new element/tag began and its name is available. */
-    HOXML_CODE_ELEMENT_END, /**< An element was closed, </tag> or <tag/>, and its name and content are available. */
-    HOXML_CODE_ATTRIBUTE, /**< An attribute's value, its name, and its element are available. */
-    HOXML_CODE_PROCESSING_INSTRUCTION_BEGIN, /**< A processing instruction began and its target is available. */
-    HOXML_CODE_PROCESSING_INSTRUCTION_END /**< A processing instruction ended and its content is available. */
+    HOXML_END_OF_DOCUMENT = 0, /**< The root element has been closed, parsing is done. */
+    HOXML_ELEMENT_BEGIN, /**< A new element/tag began and its name is available. */
+    HOXML_ELEMENT_END, /**< An element was closed, </tag> or <tag/>, and its name and content are available. */
+    HOXML_ATTRIBUTE, /**< An attribute's value, its name, and its element are available. */
+    HOXML_PROCESSING_INSTRUCTION_BEGIN, /**< A processing instruction began and its target is available. */
+    HOXML_PROCESSING_INSTRUCTION_END /**< A processing instruction ended and its content is available. */
 } hoxml_code_t;
 
 typedef enum { HOXML_ENC_UNKNOWN = 0, HOXML_ENC_UTF_8, HOXML_ENC_UTF_16_LE, HOXML_ENC_UTF_16_BE } hoxml_enc_t;
@@ -102,7 +102,7 @@ typedef struct {
 
 /**
  * Sets up the hoxml context object to begin parsing. Following this, call hoxml_parse() until
- * HOXML_CODE_END_OF_DOCUMENT or one of the error values is returned.
+ * HOXML_END_OF_DOCUMENT or one of the error values is returned.
  *
  * @param context Pointer to an allocated hoxml context object. This instance will be modified.
  * @param buffer A pointer to some contiguous block of memory for hoxml to use. This will also be modified, frequently.
@@ -338,7 +338,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
             context->err_return_state = HOXML_STATE_NONE;
             /* Note: there is a check for a change in the input pointer a little further down */
         } break;
-        case HOXML_STATE_DONE: return HOXML_CODE_END_OF_DOCUMENT;
+        case HOXML_STATE_DONE: return HOXML_END_OF_DOCUMENT;
         case HOXML_STATE_ERROR_INSUFFICIENT_MEMORY: return HOXML_ERROR_INSUFFICIENT_MEMORY;
         case HOXML_STATE_ERROR_SYNTAX: return HOXML_ERROR_SYNTAX;
         case HOXML_STATE_ERROR_ENCODING: return HOXML_ERROR_ENCODING;
@@ -349,7 +349,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
     /* A handful of cases leave the context in an intermediary state. This allows the caller to have access to things */
     /* like the tag's name, an attribute's value, etc. but that old data may now need to be cleaned up. */
     if (hoxml_post_state_cleanup(context)) /* If the cleanup process found the document ended */
-        return HOXML_CODE_END_OF_DOCUMENT;
+        return HOXML_END_OF_DOCUMENT;
 
     /* If the pointer to the XML content string has changed */
     if (context->xml != xml) {
@@ -480,7 +480,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                     hoxml_append_terminator(context);
                     if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
                         context->stack->flags |= HOXML_FLAG_EMPTY_ELEMENT; /* Apply the empty element flag */
-                        return HOXML_CODE_ELEMENT_BEGIN;
+                        return HOXML_ELEMENT_BEGIN;
                     }
                 }
             } else if (HOXML_IS_WHITESPACE(c.decoded)) { /* If whitespace ended the element name (e.g. "<tag ") */
@@ -488,7 +488,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
                     context->state = HOXML_STATE_ELEMENT_NAME2;
                     context->stack->flags |= HOXML_FLAG_BEGUN; /* Indicate "element begun" has already been returned */
-                    return HOXML_CODE_ELEMENT_BEGIN;
+                    return HOXML_ELEMENT_BEGIN;
                 }
             } else if (HOXML_IS_NAME_CHAR(c.decoded))
                 hoxml_append_char(context, c);
@@ -566,7 +566,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
                     context->state = HOXML_STATE_ELEMENT_NAME2;
                     context->post_state = HOXML_POST_STATE_ATTRIBUTE_END; /* Clean up some attribute things next call */
-                    return HOXML_CODE_ATTRIBUTE;
+                    return HOXML_ATTRIBUTE;
                 }
             } else if (c.decoded == '&') {
                 context->state = HOXML_STATE_REFERENCE_BEGIN;
@@ -773,7 +773,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 hoxml_append_terminator(context);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
                     context->state = HOXML_STATE_PROCESSING_INSTRUCTION_CONTENT;
-                    return HOXML_CODE_PROCESSING_INSTRUCTION_BEGIN;
+                    return HOXML_PROCESSING_INSTRUCTION_BEGIN;
                 }
             } else if (c.decoded == '?') { /* A '?' (or "?>") marks the end of the target and PI */
                 hoxml_append_terminator(context);
@@ -1083,15 +1083,15 @@ hoxml_code_t hoxml_end_tag(hoxml_context_t* context) {
             context->content = context->tag + hoxml_strlen(context->tag, context->encoding);
             /* ...which may be either one or two bytes, depending on encoding */
             context->content += (context->encoding >= HOXML_ENC_UTF_16_BE ? 2 : 1);
-            return HOXML_CODE_ELEMENT_END;
+            return HOXML_ELEMENT_END;
         }
     } else if (node->flags & HOXML_FLAG_EMPTY_ELEMENT) /* Self-closing/empty element (e.g. "<tag/>") */
-        return HOXML_CODE_ELEMENT_END;
+        return HOXML_ELEMENT_END;
     else if (node->flags & HOXML_FLAG_PROCESSING_INSTRUCTION) /* Processing instruction (e.g. "<?xml?>") */
-        return HOXML_CODE_PROCESSING_INSTRUCTION_END;
+        return HOXML_PROCESSING_INSTRUCTION_END;
     /* The only remaining case is an open tag (e.g. "<tag>") and we expect a matching close tag later */
     context->post_state = HOXML_STATE_NONE; /* For this fourth case, of four possible, there is no clean up */
-    return HOXML_CODE_ELEMENT_BEGIN;
+    return HOXML_ELEMENT_BEGIN;
 }
 
 uint8_t hoxml_post_state_cleanup(hoxml_context_t* context) {
@@ -1108,7 +1108,7 @@ uint8_t hoxml_post_state_cleanup(hoxml_context_t* context) {
             }
             hoxml_pop_stack(context); /* Pop a start or self-closed tag (<tag> or <tag/> or <?pi?>)*/
             if (context->stack == NULL && was_document_or_document_type_declaration == 0)
-                return 1; /* hoxml_parse() should return HOXML_CODE_END_OF_DOCUMENT */
+                return 1; /* hoxml_parse() should return HOXML_END_OF_DOCUMENT */
             break;
         } case HOXML_POST_STATE_ATTRIBUTE_END: /* Remove the most recent attribute and value strings from the buffer */
             /* Zero the memory from the end pointer to the byte at which the attribute's name begins */

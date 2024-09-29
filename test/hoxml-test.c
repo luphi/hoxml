@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
             int is_done_with_document = 0;
             while (is_done_with_document == 0) {
                 hoxml_code_t code = hoxml_parse(hoxml_context, content_pointer, bytes_read);
-                if (code < HOXML_CODE_END_OF_DOCUMENT) { /* If an error was returned */
+                if (code < HOXML_END_OF_DOCUMENT) { /* If an error was returned */
                     if (code == HOXML_ERROR_UNEXPECTED_EOF) { /* Recoverable error */
                         /* Recover by exiting this loop leading to more XML content being read from disk */
                         printf(" --- Parsed to end of the current content buffer - continuing to next line...\n");
@@ -95,7 +95,7 @@ int main(int argc, char** argv) {
                             return EXIT_FAILURE;
                         }
                     }
-                } else if (code == HOXML_CODE_END_OF_DOCUMENT) {
+                } else if (code == HOXML_END_OF_DOCUMENT) {
                     /* Hopefully, this is one of the valid documents where we expect to eventually receive this code. */
                     /* But if this is not one of those documents, the test has failed. */
                     if (document_index < NUM_INVALID_DOCUMENTS) { /* The document was invalid, an error was expected */
@@ -110,10 +110,10 @@ int main(int argc, char** argv) {
                     }
                 } else {
                     switch (code) {
-                    case HOXML_CODE_ELEMENT_BEGIN:
+                    case HOXML_ELEMENT_BEGIN:
                         printf(" element  begin: \"%s\"\n", hoxml_context->tag);
                         break;
-                    case HOXML_CODE_ELEMENT_END:
+                    case HOXML_ELEMENT_END:
                         printf(" element    end: \"%s\"\n", hoxml_context->tag);
                         if (hoxml_context->content != NULL) {
                             /* Check the content to see if it only contains whitespace */
@@ -131,15 +131,15 @@ int main(int argc, char** argv) {
                                 printf("        content: \"%s\"\n", hoxml_context->content);
                         }
                         break;
-                    case HOXML_CODE_ATTRIBUTE:
+                    case HOXML_ATTRIBUTE:
                         printf(" attribute name: \"%s\"\n", hoxml_context->attribute);
                         printf("          value: \"%s\"\n", hoxml_context->value);
                         printf("     of element: \"%s\"\n", hoxml_context->tag);
                         break;
-                    case HOXML_CODE_PROCESSING_INSTRUCTION_BEGIN:
+                    case HOXML_PROCESSING_INSTRUCTION_BEGIN:
                         printf(" PI      target: \"%s\"\n", hoxml_context->tag);
                         break;
-                    case HOXML_CODE_PROCESSING_INSTRUCTION_END:
+                    case HOXML_PROCESSING_INSTRUCTION_END:
                         printf(" PI     content: \"%s\"\n", hoxml_context->content);
                         break;
                     default: break;

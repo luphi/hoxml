@@ -22,7 +22,7 @@ int main(int argc, char** argv) {
     /* Loop until the "end of document" code is returned */
     hoxml_code_t code;
     int exit_status = EXIT_SUCCESS;
-    while ((code = hoxml_parse(hoxml_context, content, content_length)) != HOXML_CODE_END_OF_DOCUMENT &&
+    while ((code = hoxml_parse(hoxml_context, content, content_length)) != HOXML_END_OF_DOCUMENT &&
            exit_status == EXIT_SUCCESS) {
         /* Various codes will be returned as hoxml_parse() finds tags, attributes, content, etc. or runs into an */
         /* error. Parsing is finished when an (unrecoverable) error code or the "end of document" code is returned. */
@@ -57,16 +57,16 @@ int main(int argc, char** argv) {
             exit_status = EXIT_FAILURE;
             break;
         /* Element, attribute, etc. code cases: */
-        case HOXML_CODE_PROCESSING_INSTRUCTION_BEGIN:
+        case HOXML_PROCESSING_INSTRUCTION_BEGIN:
             printf(" Processing instruction target: %s\n", hoxml_context->tag);
             break;
-        case HOXML_CODE_PROCESSING_INSTRUCTION_END:
+        case HOXML_PROCESSING_INSTRUCTION_END:
             printf(" Processing instruction content: %s\n", hoxml_context->content);
             break;
-        case HOXML_CODE_ELEMENT_BEGIN:
+        case HOXML_ELEMENT_BEGIN:
             printf(" Opened <%s>\n", hoxml_context->tag);
             break;
-        case HOXML_CODE_ELEMENT_END:
+        case HOXML_ELEMENT_END:
             if (hoxml_context->content != NULL) {
                 /* Check the content to see if it only contains whitespace */
                 int is_empty = 1;
@@ -85,7 +85,7 @@ int main(int argc, char** argv) {
             } else
                 printf(" Closed <%s>\n", hoxml_context->tag);
             break;
-        case HOXML_CODE_ATTRIBUTE:
+        case HOXML_ATTRIBUTE:
             printf(" Attribute \"%s\" of <%s> has value: %s\n", hoxml_context->attribute,
                 hoxml_context->tag, hoxml_context->value);
             break;

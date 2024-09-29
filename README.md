@@ -1,6 +1,6 @@
 # hoxml
 
-Header-Only XML parser written in portable C99. *hoxml* is non-validating but largely conforming (see [Limitations](#limitations))
+Header-Only XML parser written in portable C99. *hoxml* is non-validating but largely conforming (see [Limitations](#limitations)).
 
 
 ## Features
@@ -41,24 +41,24 @@ The buffer length needed will depend on the amount of XML content, its depth, an
 Continually call the parsing function until the *end of document* code is returned or an error code is returned.
 ``` c
 hoxml_code_t code;
-while ((code = hoxml_parse(hoxml_context, content, content_length)) != HOXML_CODE_END_OF_DOCUMENT) {
+while ((code = hoxml_parse(hoxml_context, content, content_length)) != HOXML_END_OF_DOCUMENT) {
     switch (code) {
         case HOXML_ERROR_SYNTAX:
             fprintf(stderr, "Syntax error on line %d, column %d. Exiting...\n", hoxml_context->line, hoxml_context->column);
             return EXIT_FAILURE;
         ...
-        case HOXML_CODE_END_OF_DOCUMENT:
+        case HOXML_END_OF_DOCUMENT:
             return EXIT_SUCCESS;
-        case HOXML_CODE_ELEMENT_BEGIN:
+        case HOXML_ELEMENT_BEGIN:
             printf("Opened <%s>\n", hoxml_context->tag);
             break;
-        case HOXML_CODE_ELEMENT_END:
+        case HOXML_ELEMENT_END:
             if (hoxml_context->content != NULL)
                 printf("Closed <%s> with content \"%s\"\n", hoxml_context->tag, hoxml_context->content);
             else
                 printf("Closed <%s>\n", hoxml_context->tag);
             break;
-        case HOXML_CODE_ATTRIBUTE:
+        case HOXML_ATTRIBUTE:
             printf("Attribute \"%s\" of <%s> has value: %s\n", hoxml_context->attribute, hoxml_context->tag, hoxml_context->value);
             break;
         ...
@@ -73,27 +73,27 @@ The *unexpected EoF* error code will be returned when parsing has reached the en
 
 ## Return Codes
 
-`HOXML_CODE_END_OF_DOCUMENT`: The root element has been closed and parsing is done.
+`HOXML_END_OF_DOCUMENT`: The root element has been closed and parsing is done.
 
-`HOXML_CODE_ELEMENT_BEGIN`: A new element began, either with an open tag (e.g `<tag>`) or self-closing tag (e.g. `<tag/>`). Its name is available in the `tag` variable of the context object.
+`HOXML_ELEMENT_BEGIN`: A new element began, either with an open tag (e.g `<tag>`) or self-closing tag (e.g. `<tag/>`). Its name is available in the `tag` variable of the context object.
 
-`HOXML_CODE_ELEMENT_END`: An element was closed, either with a close tag (e.g. `</tag>`) or self-closing tag (e.g. `<tag/>`). Its name is available in the `tag` variable of the context object. If the element had any content, including whitespace, it will be available in the `content` variable. If not, `content` will be null.
+`HOXML_ELEMENT_END`: An element was closed, either with a close tag (e.g. `</tag>`) or self-closing tag (e.g. `<tag/>`). Its name is available in the `tag` variable of the context object. If the element had any content, including whitespace, it will be available in the `content` variable. If not, `content` will be null.
 
-`HOXML_CODE_ATTRIBUTE`: An attribute of the open element was declared. The attribute's name is available in the context object's `attribute` variable, its value is available in the `value` variable, and the name of the element to which it belongs is available in the `tag` variable.
+`HOXML_ATTRIBUTE`: An attribute of the open element was declared. The attribute's name is available in the context object's `attribute` variable, its value is available in the `value` variable, and the name of the element to which it belongs is available in the `tag` variable.
 
-`HOXML_CODE_PROCESSING_INSTRUCTION_BEGIN`: A processing instruction began. Its target is available in the context object's `tag` variable.
+`HOXML_PROCESSING_INSTRUCTION_BEGIN`: A processing instruction began. Its target is available in the context object's `tag` variable.
 
-`HOXML_CODE_PROCESSING_INSTRUCTION_END`: A processing instruction ended. Its content is available in the context object's `content` variable and its target is (still) available in the `tag` variable.
+`HOXML_PROCESSING_INSTRUCTION_END`: A processing instruction ended. Its content is available in the context object's `content` variable and its target is (still) available in the `tag` variable.
 
-`HOXML_ERROR_INSUFFICIENT_MEMORY`: All bytes of the buffer provided to hoxml are being used but more are required. This error is one of two that can be recovered (see [Error Recovery](#error-recovery)).
+`HOXML_ERROR_INSUFFICIENT_MEMORY`: Continued parsing requires more memory. This error is one of two that can be recovered (see [Error Recovery](#error-recovery)).
 
-`HOXML_ERROR_UNEXPECTED_EOF`: Parsing has reached the end of the XML content before the end of the document. This is determined by either decoding a null terminator (a zero) or by iterating up to the indicated length of the content. This error is one of two that can be recovered (see [Error Recovery](#error-recovery)).
+`HOXML_ERROR_UNEXPECTED_EOF`: Reached the end of the XML content before the end of the document. This error is one of two that can be recovered (see [Error Recovery](#error-recovery)).
 
-`HOXML_ERROR_SYNTAX`: Invalid syntax. The `line` and `column` variables of the context object will contain the line and column, respectively, where the error was first noticed but not necessary where it exists.
+`HOXML_ERROR_SYNTAX`: Invalid syntax. The `line` and `column` variables of the context object will contain the line and column, respectively, where the error was first noticed but not necessarily where it exists.
 
 `HOXML_ERROR_ENCODING`: Character encoding errors or contradictions. For example, a document that contains a UTF-16BE Byte-Order Marker (BOM) will trigger this if its XML document declaration indicates UTF-8 encoding.
 
-`HOXML_ERROR_TAG_MISMATCH`: A close tag did not match the equivalent open tag. For example, `<tag>` closed with `</tga>`.
+`HOXML_ERROR_TAG_MISMATCH`: A closing tag did not match the tag that opened it. For example, `<tag>` closed with `</tga>`.
 
 `HOXML_ERROR_INVALID_DOCUMENT_TYPE_DECLARATION`: A Document Type Declaration (DTD) (`<!DOCTYPE>`) was found after the root element.
 
@@ -123,7 +123,7 @@ const char* first_half = "<root>This is the first half of...";
 const char* second_half = "...a two-part string</root>";
 hoxml_code_t code;
 while ((code = hoxml_parse(hoxml_context, first_half, strlen(first_half))) != HOXML_ERROR_UNEXPECTED_EOF) ;
-while ((code = hoxml_parse(hoxml_context, second_half, strlen(first_half))) != HOXML_CODE_END_OF_DOCUMENT) ;
+while ((code = hoxml_parse(hoxml_context, second_half, strlen(second_half))) != HOXML_END_OF_DOCUMENT) ;
 ```
 
 
