@@ -1,29 +1,29 @@
-#include <stdio.h> /* getchar(), FILE, fgets(), fopen(), fprintf(), fseek(), printf(), stderr */
-#include <stdlib.h> /* exit(), malloc(), NULL, strtol */
+#include <stdio.h> /* FILE, fopen(), fprintf(), fread(), fseek(), ftell(), printf(), stderr */
+#include <stdlib.h> /* atoi(), EXIT_FAILURE, EXIT_SUCCESS, free() malloc(), NULL */
 
 #define HOXML_IMPLEMENTATION
-// #define HOXML_DEBUG
+/* #define HOXML_DEBUG */
 #include "hoxml.h"
 
-#define NUM_DOCUMENTS 17
+#define NUM_DOCUMENTS 18
 #define NUM_INVALID_DOCUMENTS 8
 #define CONTENT_BUFFER_LENGTH 75 /* Small, odd number to force reallocation and to trigger "unexpected EoF" errors */
                                  /* halfway through UTF-16 characters */
 
 int main(int argc, char** argv) {
-    char* documents[NUM_DOCUMENTS + 1];
+    char* documents[NUM_DOCUMENTS];
     /* These documents are expected to return errors */
-    documents[0] =  "invalid_doctype.xml";
-    documents[1] =  "invalid_document_declaration.xml";
-    documents[2] =  "invalid_encoding.xml";
-    documents[3] =  "invalid_syntax_cdata.xml";
-    documents[4] =  "invalid_syntax_close_and_self_close.xml";
-    documents[5] =  "invalid_syntax_name_char.xml";
-    documents[6] =  "invalid_syntax_reference.xml";
-    documents[7] =  "invalid_tag_mismatch.xml";
+    documents[0]  = "invalid_doctype.xml";
+    documents[1]  = "invalid_document_declaration.xml";
+    documents[2]  = "invalid_encoding.xml";
+    documents[3]  = "invalid_syntax_cdata.xml";
+    documents[4]  = "invalid_syntax_close_and_self_close.xml";
+    documents[5]  = "invalid_syntax_name_char.xml";
+    documents[6]  = "invalid_syntax_reference.xml";
+    documents[7]  = "invalid_tag_mismatch.xml";
     /* These documents are expected to be parsed successfully */
-    documents[8] =  "valid_basic.xml";
-    documents[9] =  "valid_cdata.xml";
+    documents[8]  = "valid_basic.xml";
+    documents[9]  = "valid_cdata.xml";
     documents[10] = "valid_comments.xml";
     documents[11] = "valid_doctype.xml";
     documents[12] = "valid_encoding_utf8.xml";
@@ -33,11 +33,12 @@ int main(int argc, char** argv) {
     documents[16] = "valid_little_bit_of_everything.xml";
     documents[17] = "valid_references.xml";
 
-    int from = 0, to = NUM_DOCUMENTS;
+    int from = 0, to = NUM_DOCUMENTS - 1;
     if (argc > 1) /* If a specific index was passed as a CLI argument */
-        from = to = strtol(argv[1], NULL, 10); /* No sanitation here. You're a programmer. Be smart. */
+        from = to = atoi(argv[1]); /* No sanitation here. You're a programmer. Be smart. */
 
-    for (int document_index = from; document_index <= to; document_index++) {
+    int document_index;
+    for (document_index = from; document_index <= to; document_index++) {
         FILE* file;
         if ((file = fopen(documents[document_index], "r")) == NULL) {
             fprintf(stderr, "Couldn't open document: %s\n", documents[document_index]);
@@ -48,13 +49,14 @@ int main(int argc, char** argv) {
         fseek(file, 0, SEEK_END); /* Seek to the end of the file */
         content_length = ftell(file); /* Take the position in the file, the end, as the length */
         fseek(file, 0, SEEK_SET); /* Seek back to the beginning of the file to iterate through it */
-        printf("\n\n\n --------- Parsing XML document %s of length %zu\n", documents[document_index], content_length);
+        printf("\n\n\n --------- Parsing XML document %s of length %lu\n", documents[document_index],
+            (unsigned long)content_length);
 
         hoxml_context_t hoxml_context[1];
         size_t hoxml_buffer_length = content_length / 8; /* Use a small length to force multiple line reads */
         void* hoxml_buffer = malloc(hoxml_buffer_length);
         hoxml_init(hoxml_context, hoxml_buffer, hoxml_buffer_length);
-        printf(" --- Using an initial buffer length of %zu\n", hoxml_buffer_length);
+        printf(" --- Using an initial buffer length of %lu\n", (unsigned long)hoxml_buffer_length);
 
         size_t bytes_read;
         char content[CONTENT_BUFFER_LENGTH], content_copy[CONTENT_BUFFER_LENGTH], *content_pointer = content;
@@ -68,12 +70,12 @@ int main(int argc, char** argv) {
                 if (code < HOXML_END_OF_DOCUMENT) { /* If an error was returned */
                     if (code == HOXML_ERROR_UNEXPECTED_EOF) { /* Recoverable error */
                         /* Recover by exiting this loop leading to more XML content being read from disk */
-                        printf(" --- Parsed to end of the current content buffer - continuing to next line...\n");
+                        printf(" --- Parsed to end of the current content buffer - continuing to next string...\n");
                         break;
                     } else if (code == HOXML_ERROR_INSUFFICIENT_MEMORY) { /* Recoverable error */
                         /* Recover by doubling the size of the buffer and telling hoxml to use it */
-                        printf(" --- Ran out of memory - increasing buffer from %zu to %zu\n", hoxml_buffer_length,
-                            hoxml_buffer_length * 2);
+                        printf(" --- Ran out of memory - increasing buffer from %lu to %lu\n",
+                            (unsigned long)hoxml_buffer_length, (unsigned long)hoxml_buffer_length * 2);
                         hoxml_buffer_length *= 2;
                         void* new_buffer = malloc(hoxml_buffer_length);
                         hoxml_realloc(hoxml_context, new_buffer, hoxml_buffer_length);

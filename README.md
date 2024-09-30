@@ -1,11 +1,11 @@
 # hoxml
 
-Header-Only XML parser written in portable C99. *hoxml* is non-validating but largely conforming (see [Limitations](#limitations)).
+Header-Only XML parser written in portable ANSI C. *hoxml* is non-validating but largely conforming (see [Limitations](#limitations)).
 
 
 ## Features
 
-- Portable C99, tested with GCC (Windows and Linux) and MSVC
+- Portable ANSI C (C89), tested with GCC (Windows and Linux) and MSVC
 - Supports UTF-8, UTF-16BE, and UTF-16LE including their BOMs
 - Supports entities (`&apos;`, `&#x74;`, etc.), `<![CDATA[]]>` sections, comments, and processing instructions
 - Allows content to be passed in parts

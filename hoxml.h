@@ -95,7 +95,7 @@ typedef struct {
     hoxml_node_t* stack;
     hoxml_enc_t encoding;
     int8_t state, post_state, return_state, err_return_state;
-    uint8_t stream_length;
+    size_t stream_length;
     uint32_t stream;
     size_t buffer_length, xml_length;
 } hoxml_context_t;
@@ -228,7 +228,7 @@ typedef struct hoxml_node {
 
 typedef struct {
     uint32_t encoded, decoded;
-    uint8_t bytes;
+    size_t bytes;
 } hoxml_char_t;
 
 HOXML_DECL void hoxml_init(hoxml_context_t* context, char* buffer, size_t buffer_length) {
@@ -278,6 +278,9 @@ HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, size_t buf
     }
 }
 
+#ifndef UINT32_MAX /* Defined in stdint.h with later revisions of C and C++ but not for some earlier ones */
+    #define UINT32_MAX (0xffffffff)
+#endif
 #define HOXML_TO_LOWER(c) (c >= 'A' && c <= 'Z' ? c + 32 : c)
 #define HOXML_IS_NEW_LINE(c) (c == 0x0A || c == 0x0D)
 #define HOXML_IS_WHITESPACE(c) (c == 0x20 || c == 0x09 || HOXML_IS_NEW_LINE(c))
@@ -359,10 +362,10 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
         context->iterator = xml;
     }
 
-    uint8_t bytes_to_iterate = 0; /* Number of bytes iterated this loop - may need to be undone outside the loop */
+    size_t bytes_to_iterate = 0; /* Number of bytes iterated this loop - may need to be undone outside the loop */
     while (context->state >= HOXML_STATE_NONE && context->state <= HOXML_STATE_DONE) {
         size_t bytes_remaining = (size_t)(context->xml_length - (context->iterator - context->xml));
-        uint8_t bytes_to_copy = (bytes_remaining <= 4 ? bytes_remaining : 4) - context->stream_length;
+        size_t bytes_to_copy = (bytes_remaining <= 4 ? bytes_remaining : 4) - context->stream_length;
         if (bytes_to_copy < 4)
             memcpy((char*)&context->stream + context->stream_length, context->iterator, bytes_to_copy);
         else
@@ -1006,7 +1009,8 @@ void hoxml_append_terminator(hoxml_context_t* context) {
 
 void hoxml_end_ref(hoxml_context_t* context, hoxml_ref_type_t type) {
     hoxml_char_t c;
-    c.decoded = c.encoded = c.bytes = 0;
+    c.decoded = c.encoded = 0;
+    c.bytes = 0;
     unsigned long value; /* Integer value of numeric or hexadecimal reference */
     switch (type) {
     case HOXML_REF_TYPE_ENTITY:
@@ -1125,7 +1129,8 @@ uint8_t hoxml_post_state_cleanup(hoxml_context_t* context) {
 
 hoxml_char_t hoxml_dec_char(const char* str, size_t str_length, hoxml_enc_t enc) {
     hoxml_char_t c;
-    c.encoded = c.decoded = c.bytes = 0; /* These default values are not valid so pausing will cease if returned */
+    c.encoded = c.decoded = 0; /* These default values are not valid so pausing will cease if returned */
+    c.bytes = 0;
     switch (enc) {
     case HOXML_ENC_UNKNOWN:
         c.bytes = 1;

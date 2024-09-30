@@ -1,5 +1,5 @@
 #include <stdio.h> /* fprintf(), printf(), stderr */
-#include <stdlib.h> /* NULL */
+#include <stdlib.h> /* EXIT_FAILURE, EXIT_SUCCESS, free(), malloc(), NULL */
 
 #define HOXML_IMPLEMENTATION
 #include "hoxml.h"
