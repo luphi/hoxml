@@ -30,13 +30,10 @@ OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 #ifndef HOXML_H
     #define HOXML_H
 
-#include <stddef.h> /* NULL */
+#include <stddef.h> /* NULL, size_t */
 #include <stdlib.h> /* strtoul() */
 #include <string.h> /* memcpy(), memset() */
 #include <stdint.h> /* int8_t, uint8_t, uint16_t, UINT32_MAX, uint32_t, */
-#ifdef HOXML_DEBUG
-    #include <stdarg.h> /* va_list, va_start(), va_end() */
-#endif
 
 #ifndef HOXML_DECL
     #define HOXML_DECL
@@ -90,14 +87,21 @@ typedef struct {
     uint32_t column; /**< The column, on the current line, of the character last parsed. */
 
     /* Private (for internal use) */
-    const char *xml, *iterator;
-    char *buffer, *ref_start;
-    hoxml_node_t* stack;
-    hoxml_enc_t encoding;
-    int8_t state, post_state, return_state, err_return_state;
-    size_t stream_length;
-    uint32_t stream;
-    size_t buffer_length, xml_length;
+    const char* xml; /* XML content to be parsed */
+    size_t xml_length; /* Length of the XML content to parse */
+    hoxml_enc_t encoding; /* Character encoding of the XML content */
+    const char* iterator; /* Pointer to the character in the XML content being parsed */
+    char* buffer; /* Memory allocated for hoxml to use */
+    size_t buffer_length; /* Amount of memory allocated for hoxml */
+    char* ref_start; /* Pointer to a location on the stack where a reference entity string (e.g "&lt;") began */
+    hoxml_node_t* stack; /* Pointer to the current node in the stack-like structure of elements */
+    int8_t state; /* Current parsing state, determines which characters are acceptable and when to return */
+    int8_t post_state; /* When not "none" this indicates a past state that has a cleanup step */
+    int8_t return_state; /* State to return to after the processing of a comment or reference has finished */
+    int8_t error_return_state; /* State to return to after recovering from an error */
+    uint32_t stream; /* Holds the current character, whole or partial. May contain bytes from different strings. */
+    size_t stream_length; /* Length of the 'stream' variable in bytes */
+    uint32_t newline_character; /* The character used to increment the 'line' variable, \r or \n */
 } hoxml_context_t;
 
 /**
@@ -231,6 +235,45 @@ typedef struct {
     size_t bytes;
 } hoxml_char_t;
 
+#ifndef UINT32_MAX /* Defined in stdint.h with later revisions of C and C++ but not for some earlier ones */
+    #define UINT32_MAX (0xffffffff)
+#endif
+#define HOXML_TO_LOWER(c) (c >= 'A' && c <= 'Z' ? c + 32 : c)
+#define HOXML_IS_NEW_LINE(c) (c == 0x0A || c == 0x0D)
+#define HOXML_IS_WHITESPACE(c) (c == 0x20 || c == 0x09 || HOXML_IS_NEW_LINE(c))
+#define HOXML_IS_ASCII_CHAR(c) (c >= 0x21 && c <= 0x7F)
+#define HOXML_IS_CHAR_DATA(c) (c != '<' && c != '&')
+#define HOXML_IS_ALPHA(c) ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+#define HOXML_IS_NUMERIC(c) (c >= '0' && c <= '9')
+#define HOXML_IS_NAME_START_CHAR(c) (HOXML_IS_ALPHA(c) || c == ':' || c == '_' || (c >= 0xC0 && c <= 0xD6) || \
+    (c >= 0xD8 && c <= 0xF6) || c >= 0xF8)
+#define HOXML_IS_NAME_CHAR(c) (HOXML_IS_NAME_START_CHAR(c) || c == '-' || c == '.'|| HOXML_IS_NUMERIC(c))
+#define HOXML_IS_HEX_CHAR(c) (HOXML_IS_NUMERIC(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
+#define HOXML_IS_VALUE_CHAR_DATA(f, c) (HOXML_IS_CHAR_DATA(c) && ((f & HOXML_FLAG_DOUBLE_QUOTE && c != '"') || \
+    c != '\''))
+
+void hoxml_push_stack(hoxml_context_t* context);
+void hoxml_pop_stack(hoxml_context_t* context);
+void hoxml_append_char(hoxml_context_t* context, hoxml_char_t c);
+void hoxml_append_terminator(hoxml_context_t* context);
+void hoxml_end_ref(hoxml_context_t* context, hoxml_ref_type_t type);
+void hoxml_begin_tag(hoxml_context_t* context);
+hoxml_code_t hoxml_end_tag(hoxml_context_t* context);
+uint8_t hoxml_post_state_cleanup(hoxml_context_t* context);
+hoxml_char_t hoxml_dec_char(const char* str, size_t str_length, hoxml_enc_t enc);
+hoxml_char_t hoxml_enc_char(uint32_t value, hoxml_enc_t enc);
+char* hoxml_to_ascii(const char* str, hoxml_enc_t enc);
+uint32_t hoxml_strlen(char* str, hoxml_enc_t enc);
+uint8_t hoxml_strcmp(const char* str1, hoxml_enc_t enc1, const char* str2, hoxml_enc_t enc2, hoxml_case_t sensitivity);
+const char* hoxml_strstr(const char* haystack, hoxml_enc_t enc_haystack, const char* needle, hoxml_enc_t enc_needle,
+    hoxml_case_t sensitivity);
+#ifdef HOXML_DEBUG
+    #include <stdio.h> /* printf() */
+    #define HOXML_LOG_STATE(s) printf("%s\n", s);
+#else
+    #define HOXML_LOG_STATE(s)
+#endif
+
 HOXML_DECL void hoxml_init(hoxml_context_t* context, char* buffer, size_t buffer_length) {
     memset(context, 0, sizeof(hoxml_context_t)); /* Assign all values of the context to zero */
     context->buffer = buffer; /* Use the provided buffer */
@@ -273,49 +316,10 @@ HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, size_t buf
     context->buffer_length = buffer_length;
 
     if (context->state == HOXML_STATE_ERROR_INSUFFICIENT_MEMORY) {
-        context->state = context->err_return_state;
-        context->err_return_state = HOXML_STATE_NONE;
+        context->state = context->error_return_state;
+        context->error_return_state = HOXML_STATE_NONE;
     }
 }
-
-#ifndef UINT32_MAX /* Defined in stdint.h with later revisions of C and C++ but not for some earlier ones */
-    #define UINT32_MAX (0xffffffff)
-#endif
-#define HOXML_TO_LOWER(c) (c >= 'A' && c <= 'Z' ? c + 32 : c)
-#define HOXML_IS_NEW_LINE(c) (c == 0x0A || c == 0x0D)
-#define HOXML_IS_WHITESPACE(c) (c == 0x20 || c == 0x09 || HOXML_IS_NEW_LINE(c))
-#define HOXML_IS_ASCII_CHAR(c) (c >= 0x21 && c <= 0x7F)
-#define HOXML_IS_CHAR_DATA(c) (c != '<' && c != '&')
-#define HOXML_IS_ALPHA(c) ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
-#define HOXML_IS_NUMERIC(c) (c >= '0' && c <= '9')
-#define HOXML_IS_NAME_START_CHAR(c) (HOXML_IS_ALPHA(c) || c == ':' || c == '_' || (c >= 0xC0 && c <= 0xD6) || \
-    (c >= 0xD8 && c <= 0xF6) || c >= 0xF8)
-#define HOXML_IS_NAME_CHAR(c) (HOXML_IS_NAME_START_CHAR(c) || c == '-' || c == '.'|| HOXML_IS_NUMERIC(c))
-#define HOXML_IS_HEX_CHAR(c) (HOXML_IS_NUMERIC(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F'))
-#define HOXML_IS_VALUE_CHAR_DATA(f, c) (HOXML_IS_CHAR_DATA(c) && ((f & HOXML_FLAG_DOUBLE_QUOTE && c != '"') || \
-    c != '\''))
-
-void hoxml_push_stack(hoxml_context_t* context);
-void hoxml_pop_stack(hoxml_context_t* context);
-void hoxml_append_char(hoxml_context_t* context, hoxml_char_t c);
-void hoxml_append_terminator(hoxml_context_t* context);
-void hoxml_end_ref(hoxml_context_t* context, hoxml_ref_type_t type);
-void hoxml_begin_tag(hoxml_context_t* context);
-hoxml_code_t hoxml_end_tag(hoxml_context_t* context);
-uint8_t hoxml_post_state_cleanup(hoxml_context_t* context);
-hoxml_char_t hoxml_dec_char(const char* str, size_t str_length, hoxml_enc_t enc);
-hoxml_char_t hoxml_enc_char(uint32_t value, hoxml_enc_t enc);
-char* hoxml_to_ascii(const char* str, hoxml_enc_t enc);
-uint32_t hoxml_strlen(char* str, hoxml_enc_t enc);
-uint8_t hoxml_strcmp(const char* str1, hoxml_enc_t enc1, const char* str2, hoxml_enc_t enc2, hoxml_case_t sensitivity);
-const char* hoxml_strstr(const char* haystack, hoxml_enc_t enc_haystack, const char* needle, hoxml_enc_t enc_needle,
-    hoxml_case_t sensitivity);
-#ifdef HOXML_DEBUG
-    void hoxml_log(const char* message, ...);
-    #define HOXML_LOG(s) hoxml_log(s);
-#else
-    #define HOXML_LOG(s)
-#endif
 
 HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, size_t xml_length) {
     if (xml == NULL || xml_length == 0)
@@ -337,8 +341,8 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
             /* If the character is the equivalent of a null terminator or there was not enough data */
             if (c.decoded == 0 || c.decoded == UINT32_MAX)
                 return HOXML_ERROR_UNEXPECTED_EOF;
-            context->state = context->err_return_state;
-            context->err_return_state = HOXML_STATE_NONE;
+            context->state = context->error_return_state;
+            context->error_return_state = HOXML_STATE_NONE;
             /* Note: there is a check for a change in the input pointer a little further down */
         } break;
         case HOXML_STATE_DONE: return HOXML_END_OF_DOCUMENT;
@@ -375,11 +379,14 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
         /* If the character is the equivalent of a null terminator or there was not enough data to decode the value */
         if (c.decoded == 0 || c.decoded == UINT32_MAX) {
             context->stream_length = bytes_to_copy;
-            context->err_return_state = context->state;
+            context->error_return_state = context->state;
             context->state = HOXML_STATE_ERROR_UNEXPECTED_EOF;
             return HOXML_ERROR_UNEXPECTED_EOF;
         } else if (HOXML_IS_NEW_LINE(c.decoded)) {
-            context->line++;
+            if (context->newline_character == 0) /* If this is the first newline */
+                context->newline_character = c.decoded; /* Remember this as the character to use for increments */
+            if (c.decoded == context->newline_character) /* Avoid incrementing twice for files with \r\n endings */
+                context->line++;
             context->column = 0;
         } else
             context->column++;
@@ -394,15 +401,13 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
         context->stream_length = 0;
 
         #ifdef HOXML_DEBUG
-            if (HOXML_IS_NEW_LINE(c.decoded))
-                printf("   [%08X] [L%dC%d] ->", c.decoded, context->line, context->column);
-            else
-                printf(" %c [%08X] [L%dC%d] ->", c.decoded, c.decoded, context->line, context->column);
+            char debugValue = HOXML_IS_NEW_LINE(c.decoded) ? ' ' : c.decoded;
+            printf(" %c [%08X] [L%02dC%02d] -> ", debugValue, c.decoded, context->line, context->column);
         #endif
 
         switch(context->state) {
         case HOXML_STATE_NONE: /* The first state immediately following initialization, or a document declaration */
-            HOXML_LOG("HOXML_STATE_NONE")
+            HOXML_LOG_STATE("HOXML_STATE_NONE")
             if (c.decoded == '<')
                 hoxml_begin_tag(context);
             else if (c.decoded == 0xEF) { /* UTF-8 Byte Order Marker (BOM) is [EF] BB BF, as hex bytes */
@@ -418,7 +423,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_UTF8_BOM1: /* The first byte of a UTF-8 byte order marker was found */
-            HOXML_LOG("HOXML_STATE_UTF8_BOM1")
+            HOXML_LOG_STATE("HOXML_STATE_UTF8_BOM1")
             context->column--; /* Don't count this as a column */
             if (c.decoded == 0xBB) /* UTF-8 BOM is EF [BB] BF, as hex bytes */
                 context->state = HOXML_STATE_UTF8_BOM2;
@@ -426,7 +431,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_UTF8_BOM2: /* The second byte of a UTF-8 byte order marker was found */
-            HOXML_LOG("HOXML_STATE_UTF8_BOM2")
+            HOXML_LOG_STATE("HOXML_STATE_UTF8_BOM2")
             context->column--; /* Don't count this as a column */
             if (c.decoded == 0xBF) { /* UTF-8 BOM is EF BB [BF], as hex bytes */
                 context->state = HOXML_STATE_NONE;
@@ -435,7 +440,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_UTF16BE_BOM: /* The first byte of a UTF-16BE byte order marker was found */
-            HOXML_LOG("HOXML_STATE_UTF16BE_BOM")
+            HOXML_LOG_STATE("HOXML_STATE_UTF16BE_BOM")
             context->column--; /* Don't count this as a column */
             if (c.decoded == 0xFF) { /* UTF-16BE BOM is FE [FF], as hex bytes */
                 context->state = HOXML_STATE_NONE;
@@ -444,7 +449,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_UTF16LE_BOM: /* The first byte of a UTF-16LE byte order marker was found */
-            HOXML_LOG("HOXML_STATE_UTF16LE_BOM")
+            HOXML_LOG_STATE("HOXML_STATE_UTF16LE_BOM")
             context->column--; /* Don't count this as a column */
             if (c.decoded == 0xFE) { /* UTF-16LE BOM is FF [FE], as hex bytes */
                 context->state = HOXML_STATE_NONE;
@@ -453,7 +458,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_TAG_BEGIN: /* A new tag was started (a '<' was found) and a new node has been pushed */
-            HOXML_LOG("HOXML_STATE_TAG_BEGIN")
+            HOXML_LOG_STATE("HOXML_STATE_TAG_BEGIN")
             if (c.decoded == '?') { /* "<?" begins a processing instruction */
                 context->state = HOXML_STATE_PROCESSING_INSTRUCTION_BEGIN;
                 context->stack->flags |= HOXML_FLAG_PROCESSING_INSTRUCTION; /* Apply the PI flag to this node */
@@ -471,7 +476,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_ELEMENT_NAME1: /* A name start character was found after '<' (e.g. the 't' in "<tag>") */
-            HOXML_LOG("HOXML_STATE_ELEMENT_NAME1")
+            HOXML_LOG_STATE("HOXML_STATE_ELEMENT_NAME1")
             if (c.decoded == '>') {
                 hoxml_append_terminator(context);
                 if (context->state >= HOXML_STATE_NONE) /* If appending the terminator was successful */
@@ -499,7 +504,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_ELEMENT_NAME2: /* Whitespace was found after a tag name (e.g. "<tag    >") */
-            HOXML_LOG("HOXML_STATE_ELEMENT_NAME2")
+            HOXML_LOG_STATE("HOXML_STATE_ELEMENT_NAME2")
             if (c.decoded == '>') {
                 hoxml_append_terminator(context);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
@@ -527,7 +532,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_ATTRIBUTE_NAME1: /* A name start character was found inside a tag after whitespace */
-            HOXML_LOG("HOXML_STATE_ATTRIBUTE_NAME1")
+            HOXML_LOG_STATE("HOXML_STATE_ATTRIBUTE_NAME1")
             if (c.decoded == '=') { /* The name was immediately followed by '=' */
                 hoxml_append_terminator(context);
                 if (context->state >= HOXML_STATE_NONE) /* If appending the terminator was successful */
@@ -542,14 +547,14 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_ATTRIBUTE_NAME2: /* Whitespace was found after an attribute name, look for '=' */
-            HOXML_LOG("HOXML_STATE_ATTRIBUTE_NAME2")
+            HOXML_LOG_STATE("HOXML_STATE_ATTRIBUTE_NAME2")
             if (c.decoded == '=')
                 context->state = HOXML_STATE_ATTRIBUTE_ASSIGNMENT;
             else if (!HOXML_IS_WHITESPACE(c.decoded)) /* Only '=' and whitespace are allowed after an attribute name */
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_ATTRIBUTE_ASSIGNMENT: /* Found a ' =' after an attribute name, look for quotes or whitespace */
-            HOXML_LOG("HOXML_STATE_ATTRIBUTE_ASSIGNMENT")
+            HOXML_LOG_STATE("HOXML_STATE_ATTRIBUTE_ASSIGNMENT")
             if (c.decoded == '"' || c.decoded == '\'') {
                 context->state = HOXML_STATE_ATTRIBUTE_VALUE;
                 if (c.decoded == '"')
@@ -562,7 +567,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_ATTRIBUTE_VALUE: /* A quotation, single or double, was found after an attribute name and '=' */
-            HOXML_LOG("HOXML_STATE_ATTRIBUTE_VALUE")
+            HOXML_LOG_STATE("HOXML_STATE_ATTRIBUTE_VALUE")
             if ((context->stack->flags & HOXML_FLAG_DOUBLE_QUOTE && c.decoded == '"') || (!(context->stack->flags &
                     HOXML_FLAG_DOUBLE_QUOTE) && c.decoded == '\'')) { /* The quotation marks match, value is done */
                 hoxml_append_terminator(context);
@@ -580,7 +585,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_OPEN_TAG: /* Found a '>' and now inside an open tag, looking for multiple things */
-            HOXML_LOG("HOXML_STATE_OPEN_TAG")
+            HOXML_LOG_STATE("HOXML_STATE_OPEN_TAG")
             if (c.decoded == '<')
                 hoxml_begin_tag(context);
             else if (c.decoded == '&') {
@@ -592,7 +597,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_COMMENT_CDATA_OR_DTD_BEGIN: /* Found "<!", looking for a '-', '[', or 'D' */
-            HOXML_LOG("HOXML_STATE_COMMENT_CDATA_OR_DTD_BEGIN")
+            HOXML_LOG_STATE("HOXML_STATE_COMMENT_CDATA_OR_DTD_BEGIN")
             if (c.decoded == '-') /* Possible beginning of a comment (i.e. "<!--") */
                 context->state = HOXML_STATE_COMMENT_BEGIN;
             else if (c.decoded == '[') /* Possible beginning of a CDATA section (i.e. "<![CDATA[") */
@@ -607,7 +612,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_COMMENT_BEGIN: /* Found a '-' was found after "<!", looking for a '-' beginning a comment */
-            HOXML_LOG("HOXML_STATE_COMMENT_BEGIN")
+            HOXML_LOG_STATE("HOXML_STATE_COMMENT_BEGIN")
             hoxml_pop_stack(context); /* The preceeding '<' triggered a new node. Undo it. */
             if (c.decoded == '-')
                 context->state = HOXML_STATE_COMMENT;
@@ -615,28 +620,28 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_COMMENT: /* Found a second '-' and now in a comment, looking for '-' */
-            HOXML_LOG("HOXML_STATE_COMMENT")
+            HOXML_LOG_STATE("HOXML_STATE_COMMENT")
             if (c.decoded == '-')
                 context->state = HOXML_STATE_COMMENT_END1;
             else
                 context->state = HOXML_STATE_COMMENT;
             break;
         case HOXML_STATE_COMMENT_END1: /* Found a '-' while in a comment, looking for a second '-' */
-            HOXML_LOG("HOXML_STATE_COMMENT_END1")
+            HOXML_LOG_STATE("HOXML_STATE_COMMENT_END1")
             if (c.decoded == '-')
                 context->state = HOXML_STATE_COMMENT_END2;
             else
                 context->state = HOXML_STATE_COMMENT;
             break;
         case HOXML_STATE_COMMENT_END2: /* Found a second '-' while in a comment, looking for '>' to end the comment */
-            HOXML_LOG("HOXML_STATE_COMMENT_END2")
+            HOXML_LOG_STATE("HOXML_STATE_COMMENT_END2")
             if (c.decoded == '>')
                 context->state = context->return_state; /* Return to the original state at the time '<' was found */
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_CDATA_BEGIN1: /* Found a '[' after "<!", looking for 'C' */
-            HOXML_LOG("HOXML_STATE_CDATA_BEGIN1")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_BEGIN1")
             hoxml_pop_stack(context); /* The preceeding '<' triggered a new node. Undo it. */
             if (c.decoded == 'C')
                 context->state = HOXML_STATE_CDATA_BEGIN2;
@@ -644,49 +649,49 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_CDATA_BEGIN2: /* Found a 'C' after "<![", looking for 'D' */
-            HOXML_LOG("HOXML_STATE_CDATA_BEGIN2")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_BEGIN2")
             if (c.decoded == 'D')
                 context->state = HOXML_STATE_CDATA_BEGIN3;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_CDATA_BEGIN3: /* Found a 'D' after "<![C", looking for 'A' */
-            HOXML_LOG("HOXML_STATE_CDATA_BEGIN3")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_BEGIN3")
             if (c.decoded == 'A')
                 context->state = HOXML_STATE_CDATA_BEGIN4;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_CDATA_BEGIN4: /* Found an 'A' after "<![CD", looking for 'T' */
-            HOXML_LOG("HOXML_STATE_CDATA_BEGIN4")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_BEGIN4")
             if (c.decoded == 'T')
                 context->state = HOXML_STATE_CDATA_BEGIN5;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_CDATA_BEGIN5: /* Found a 'T' after "<![CDA", looking for 'A' */
-            HOXML_LOG("HOXML_STATE_CDATA_BEGIN5")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_BEGIN5")
             if (c.decoded == 'A')
                 context->state = HOXML_STATE_CDATA_BEGIN6;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_CDATA_BEGIN6: /* Found an 'A' after "<![CDAT", looking for '[' */
-            HOXML_LOG("HOXML_STATE_CDATA_BEGIN6")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_BEGIN6")
             if (c.decoded == '[')
                 context->state = HOXML_STATE_CDATA_CONTENT;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_CDATA_CONTENT: /* Found a '[' after "<![CDATA" and now in a CDATA section, looking for ']' */
-            HOXML_LOG("HOXML_STATE_CDATA_CONTENT")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_CONTENT")
             hoxml_append_char(context, c);
             if (context->state >= HOXML_STATE_NONE) { /* If appending the character was successful */
                 if (c .decoded == ']')
                     context->state = HOXML_STATE_CDATA_END1;
             } break;
         case HOXML_STATE_CDATA_END1: /* Found a ']' while in a CDATA section, looking for a second ']' */
-            HOXML_LOG("HOXML_STATE_CDATA_END1")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_END1")
             hoxml_append_char(context, c);
             if (context->state >= HOXML_STATE_NONE) { /* If appending the character was successful */
                 if (c.decoded == ']')
@@ -695,7 +700,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                     context->state = HOXML_STATE_CDATA_CONTENT;
             } break;
         case HOXML_STATE_CDATA_END2: /* Found a second ']' while in a CDATA section, looking for '>' */
-            HOXML_LOG("HOXML_STATE_CDATA_END2")
+            HOXML_LOG_STATE("HOXML_STATE_CDATA_END2")
             if (c.decoded == '>') {
                 context->state = HOXML_STATE_OPEN_TAG;
                 /* We couldn't be sure the CDATA section had ended until now so two ']' characters were appended. */
@@ -711,7 +716,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                     context->state = HOXML_STATE_CDATA_CONTENT;
             } break;
         case HOXML_STATE_REFERENCE_BEGIN: /* Found an '&' in content or a value, looking for '#', ';', or characters */
-            HOXML_LOG("HOXML_STATE_REFERENCE_BEGIN")
+            HOXML_LOG_STATE("HOXML_STATE_REFERENCE_BEGIN")
             context->ref_start = context->stack->end + 1; /* Point to the first byte for string comparisons later */
             if (c.decoded == '#')
                 context->state = HOXML_STATE_REFERENCE_NUMERIC;
@@ -724,7 +729,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_REFERENCE_ENTITY: /* Looking for "[a]mp", "[l]t", "[g]t", "[q]uot", or "apos" */
-            HOXML_LOG("HOXML_STATE_REFERENCE_ENTITY")
+            HOXML_LOG_STATE("HOXML_STATE_REFERENCE_ENTITY")
             if (c.decoded == ';')
                 hoxml_end_ref(context, HOXML_REF_TYPE_ENTITY);
             /* Predefined escapes only use a subset of lower case English characters. For now, we'll check for ASCII. */
@@ -734,7 +739,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_REFERENCE_NUMERIC: /* Found a '#' in a reference, looking for 'x', ';', or chars */
-            HOXML_LOG("HOXML_STATE_REFERENCE_NUMERIC")
+            HOXML_LOG_STATE("HOXML_STATE_REFERENCE_NUMERIC")
             if (c.decoded == 'x')
                 context->state = HOXML_STATE_REFERENCE_HEX;
             else if (c.decoded == ';')
@@ -745,7 +750,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_REFERENCE_HEX: /* Found an 'x' in a reference after '#', looking for chars or ';' */
-            HOXML_LOG("HOXML_STATE_REFERENCE_HEX")
+            HOXML_LOG_STATE("HOXML_STATE_REFERENCE_HEX")
             if (c.decoded == ';')
                 hoxml_end_ref(context, HOXML_REF_TYPE_HEX);
             else if (HOXML_IS_HEX_CHAR(c.decoded))
@@ -754,7 +759,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_PROCESSING_INSTRUCTION_BEGIN: /* Found a '?' after a '<' and now in a processing instruction */
-            HOXML_LOG("HOXML_STATE_PROCESSING_INSTRUCTION_BEGIN")
+            HOXML_LOG_STATE("HOXML_STATE_PROCESSING_INSTRUCTION_BEGIN")
             if (HOXML_IS_NAME_START_CHAR(c.decoded)) {
                 hoxml_append_char(context, c);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the character was successful */
@@ -765,7 +770,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_PROCESSING_INSTRUCTION_TARGET1: /* Found a name char after "<?", looking for more name chars */
-            HOXML_LOG("HOXML_STATE_PROCESSING_INSTRUCTION_TARGET1")
+            HOXML_LOG_STATE("HOXML_STATE_PROCESSING_INSTRUCTION_TARGET1")
             if (HOXML_IS_WHITESPACE(c.decoded)) { /* A whitespace marks an end of a target and beginning of content */
                 if (hoxml_strcmp(&context->stack->tag, context->encoding, "xml", HOXML_ENC_UNKNOWN,
                         HOXML_CASE_INSENSITIVE) && context->stack->parent != NULL) {
@@ -788,7 +793,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_PROCESSING_INSTRUCTION_CONTENT: /* Found space after a PI name, looking for '?' or chars */
-            HOXML_LOG("HOXML_STATE_PROCESSING_INSTRUCTION_CONTENT")
+            HOXML_LOG_STATE("HOXML_STATE_PROCESSING_INSTRUCTION_CONTENT")
             if (c.decoded == '?') { /* "?>" marks the end of a processing instruction */
                 const char* declaration;
                 if ((declaration = hoxml_strstr(context->content, context->encoding, "encoding=", HOXML_ENC_UNKNOWN,
@@ -838,7 +843,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 hoxml_append_char(context, c);
             } break;
         case HOXML_STATE_DTD_BEGIN1: /* Found a 'D' after "<!", looking for 'O' */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN1")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN1")
             hoxml_pop_stack(context); /* The preceeding '<' triggered a new node. Undo it. */
             if (c.decoded == 'O')
                 context->state = HOXML_STATE_DTD_BEGIN2;
@@ -846,63 +851,63 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_BEGIN2: /* Found an 'O' after "<!D", looking for 'C' */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN2")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN2")
             if (c.decoded == 'C')
                 context->state = HOXML_STATE_DTD_BEGIN3;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_BEGIN3: /* Found a 'C' after "<!DO", looking for 'T' */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN3")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN3")
             if (c.decoded == 'T')
                 context->state = HOXML_STATE_DTD_BEGIN4;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_BEGIN4: /* Found a 'T' after "<!DOC", looking for 'Y' */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN4")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN4")
             if (c.decoded == 'Y')
                 context->state = HOXML_STATE_DTD_BEGIN5;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_BEGIN5: /* Found a 'Y' after "<!DOCT", looking for 'P' */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN5")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN5")
             if (c.decoded == 'P')
                 context->state = HOXML_STATE_DTD_BEGIN6;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_BEGIN6: /* Found a 'P' after "<!DOCTY", looking for 'E' */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN6")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN6")
             if (c.decoded == 'E')
                 context->state = HOXML_STATE_DTD_BEGIN7;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_BEGIN7: /* Found an 'E' after "<!DOCTYP", looking for whitespace */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN7")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN7")
             if (HOXML_IS_WHITESPACE(c.decoded))
                 context->state = HOXML_STATE_DTD_BEGIN8;
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_BEGIN8: /* Found space after "<!DOCTYPE", looking for more or a name start character */
-            HOXML_LOG("HOXML_STATE_DTD_BEGIN8")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_BEGIN8")
             if (HOXML_IS_NAME_START_CHAR(c.decoded))
                 context->state = HOXML_STATE_DTD_NAME;
             else if (!HOXML_IS_WHITESPACE(c.decoded))
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_NAME: /* Found a name start character, looking for whitespace or name characters */
-            HOXML_LOG("HOXML_STATE_DTD_NAME")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_NAME")
             if (HOXML_IS_WHITESPACE(c.decoded))
                 context->state = HOXML_STATE_DTD_CONTENT;
             else if (!HOXML_IS_NAME_CHAR(c.decoded))
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_CONTENT: /* Found a DTD name and now looking for mostly anything but mainly '[' or '>' */
-            HOXML_LOG("HOXML_STATE_DTD_CONTENT")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_CONTENT")
             /* We support Document Type Declarations (DTDs) insofar as they do not cause problems and DTD names may */
             /* be recognized as invalid. Beyond that, the content is ignored just as comments are. That said, some */
             /* checks are done here and the "open bracket" state because they're easy. */
@@ -914,14 +919,14 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_DTD_OPEN_BRACKET: /* Found a '[' within DTD content, looking for a closing ']' */
-            HOXML_LOG("HOXML_STATE_DTD_OPEN_BRACKET")
+            HOXML_LOG_STATE("HOXML_STATE_DTD_OPEN_BRACKET")
             /* Some additional characters are allowed between '[' and ']' brackets, namely markup declaration */
             /* characters like '<' and '>'. We'll just allow anything to keep things simple. */
             if (c.decoded == ']')
                 context->state = HOXML_STATE_DTD_CONTENT;
             break;
         case HOXML_STATE_PROCESSING_INSTRUCTION_END: /* Found a '?' after PI content, looking for '>' */
-            HOXML_LOG("HOXML_STATE_PROCESSING_INSTRUCTION_END")
+            HOXML_LOG_STATE("HOXML_STATE_PROCESSING_INSTRUCTION_END")
             if (c.decoded == '>')
                 return hoxml_end_tag(context);
             else
@@ -950,7 +955,7 @@ void hoxml_push_stack(hoxml_context_t* context) {
     /* If "allocating" a new node would overflow the buffer */
     if ((context->stack == NULL && sizeof(hoxml_node_t) >= context->buffer_length) || (context->stack != NULL &&
             context->stack->end + 1 + sizeof(hoxml_node_t) >= context->buffer + context->buffer_length)) {
-        context->err_return_state = context->state;
+        context->error_return_state = context->state;
         context->state = HOXML_STATE_ERROR_INSUFFICIENT_MEMORY;
         return;
     }
@@ -981,7 +986,7 @@ void hoxml_append_char(hoxml_context_t* context, hoxml_char_t c) {
     context->stack->flags &= ~HOXML_FLAG_TERMINATED;
 
     if (context->stack->end + c.bytes >= context->buffer + context->buffer_length) {
-        context->err_return_state = context->state;
+        context->error_return_state = context->state;
         context->state = HOXML_STATE_ERROR_INSUFFICIENT_MEMORY;
         return;
     }
@@ -998,7 +1003,7 @@ void hoxml_append_terminator(hoxml_context_t* context) {
     /* If the document is encoded with UTF-16, two bytes will be appended. One byte otherwise. */
     uint8_t bytes = context->encoding >= HOXML_ENC_UTF_16_BE ? 2 : 1;
     if (context->stack->end + bytes >= context->buffer + context->buffer_length) {
-        context->err_return_state = context->state;
+        context->error_return_state = context->state;
         context->state = HOXML_STATE_ERROR_INSUFFICIENT_MEMORY;
         return;
     }
@@ -1361,16 +1366,5 @@ const char* hoxml_strstr(const char* haystack, hoxml_enc_t enc_haystack, const c
     }
     return NULL;
 }
-
-#ifdef HOXML_DEBUG
-    void hoxml_log(const char* format, ...) {
-        static char buffer[256];
-        va_list arguments;
-        va_start(arguments, format);
-        vsnprintf(buffer, sizeof(buffer), format, arguments);
-        va_end(arguments);
-        printf("   [HOXML] %s\n", buffer);
-    }
-#endif /* HOXML_DEBUG */
 
 #endif /* HOXML_IMPLEMENTATION */
