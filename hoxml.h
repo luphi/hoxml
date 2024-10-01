@@ -994,12 +994,16 @@ void hoxml_push_stack(hoxml_context_t* context) {
 }
 
 void hoxml_pop_stack(hoxml_context_t* context) {
-    hoxml_node_t* node = context->stack;
-    if (node != NULL) {
-        context->tag = context->attribute = context->value = context->content = NULL;
-        context->stack = node->parent;
-        memset(node, 0, node->end - (char*)node);
-    }
+    if (context->stack == NULL)
+        return;
+
+    /* Reassign the stack (head) pointer so that it now points to the parent of the node about to be popped */
+    hoxml_node_t* popped_node = context->stack;
+    context->stack = popped_node->parent;
+
+    /* Overwrite the memory used by this node with zeroes */
+    context->tag = context->attribute = context->value = context->content = NULL; /* TODO: move somewhere else */
+    memset(popped_node, 0, popped_node->end - (char*)popped_node + 1);
 }
 
 void hoxml_append_char(hoxml_context_t* context, hoxml_char_t c) {
@@ -1078,7 +1082,7 @@ void hoxml_end_ref(hoxml_context_t* context, hoxml_ref_type_t type) {
 
     /* Remove the reference's string from the buffer. For example, "&lt;" would result in "lt" being stored so it */
     /* could be parsed here. It should now be removed from the buffer. */
-    memset(context->ref_start, 0, context->stack->end - context->ref_start);
+    memset(context->ref_start, 0, context->stack->end - context->ref_start + 1);
     context->stack->end = context->ref_start - 1;
     context->ref_start = NULL;
     hoxml_append_char(context, c); /* Append the character being referenced */
@@ -1141,7 +1145,7 @@ uint8_t hoxml_post_state_cleanup(hoxml_context_t* context) {
             break;
         } case HOXML_POST_STATE_ATTRIBUTE_END: /* Remove the most recent attribute and value strings from the buffer */
             /* Zero the memory from the end pointer to the byte at which the attribute's name begins */
-            memset(context->attribute, 0, context->stack->end - (char*)context->attribute);
+            memset(context->attribute, 0, context->stack->end - (char*)context->attribute + 1);
             context->stack->end = context->attribute - 1;
             /* With these public properties now pointing to zeroes, nullify them so there's no confusion */
             context->attribute = context->value = NULL;
