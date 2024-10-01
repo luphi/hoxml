@@ -50,6 +50,8 @@ OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  * Error and token codes returned after parsing.
  */
 typedef enum {
+    HOXML_ERROR_INVALID_INPUT = -9, /**< One or more parameter passed to hoxml was unacceptable. */
+    HOXML_ERROR_INTERNAL = -8, /**< There's a bug in hoxml and parsing must halt. */
     HOXML_ERROR_INSUFFICIENT_MEMORY = -7, /**< Initialization or continued parsing require more memory. */
     HOXML_ERROR_UNEXPECTED_EOF = -6, /**< Reached the end of the XML content before the end of the document. */
     HOXML_ERROR_SYNTAX = -5, /**< Syntax error (e.g. "<element<"). */
@@ -87,6 +89,7 @@ typedef struct {
     uint32_t column; /**< The column, on the current line, of the character last parsed. */
 
     /* Private (for internal use) */
+    uint8_t is_initialized; /* Set to true by hoxml_init() and indicates this context is safe to use */
     const char* xml; /* XML content to be parsed */
     size_t xml_length; /* Length of the XML content to parse */
     hoxml_enc_t encoding; /* Character encoding of the XML content */
@@ -153,6 +156,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
 
 typedef enum {
     /* Current parser states */
+    HOXML_STATE_ERROR_INTERNAL = -8,
     HOXML_STATE_ERROR_INSUFFICIENT_MEMORY = -7,
     HOXML_STATE_ERROR_UNEXPECTED_EOF = -6,
     HOXML_STATE_ERROR_SYNTAX = -5,
@@ -275,15 +279,19 @@ const char* hoxml_strstr(const char* haystack, hoxml_enc_t enc_haystack, const c
 #endif
 
 HOXML_DECL void hoxml_init(hoxml_context_t* context, char* buffer, size_t buffer_length) {
+    if (context == NULL || buffer == NULL || buffer_length <= 0)
+        return;
+
     memset(context, 0, sizeof(hoxml_context_t)); /* Assign all values of the context to zero */
     context->buffer = buffer; /* Use the provided buffer */
     context->buffer_length = buffer_length; /* Remember the length of the provided buffer */
     context->line = 1; /* This is meant to be human-readable and humans begin counting at one */
+    context->is_initialized = 1;
     memset(buffer, 0, buffer_length); /* Fill the buffer with zeroes */
 }
 
 HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, size_t buffer_length) {
-    if (buffer_length <= context->buffer_length)
+    if (context == NULL || context->is_initialized == 0 || buffer == NULL || buffer_length <= context->buffer_length)
         return;
 
     /* Reassign the end and parent pointers of each node, beginning at the tail and iterate to the head */
@@ -322,8 +330,8 @@ HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, size_t buf
 }
 
 HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, size_t xml_length) {
-    if (xml == NULL || xml_length == 0)
-        return HOXML_ERROR_UNEXPECTED_EOF;
+    if (context == NULL || context->is_initialized == 0 || xml == NULL || xml_length == 0)
+        return HOXML_ERROR_INVALID_INPUT;
 
     switch (context->state) {
         /* Two errors are recoverable: HOXML_ERROR_INSUFFICIENT_MEMORY and HOXML_ERROR_UNEXPECTED_EOF. The former can */
@@ -346,6 +354,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
             /* Note: there is a check for a change in the input pointer a little further down */
         } break;
         case HOXML_STATE_DONE: return HOXML_END_OF_DOCUMENT;
+        case HOXML_STATE_ERROR_INTERNAL: return HOXML_ERROR_INTERNAL;
         case HOXML_STATE_ERROR_INSUFFICIENT_MEMORY: return HOXML_ERROR_INSUFFICIENT_MEMORY;
         case HOXML_STATE_ERROR_SYNTAX: return HOXML_ERROR_SYNTAX;
         case HOXML_STATE_ERROR_ENCODING: return HOXML_ERROR_ENCODING;
@@ -368,6 +377,17 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, s
 
     size_t bytes_to_iterate = 0; /* Number of bytes iterated this loop - may need to be undone outside the loop */
     while (context->state >= HOXML_STATE_NONE && context->state <= HOXML_STATE_DONE) {
+        /* About half of the parsing states assume the stack is non-null. */
+        /* If parsing is currently in one of those states and the stack (head) pointer is null. */
+        if (((context->state >= HOXML_STATE_TAG_BEGIN && context->state <= HOXML_STATE_OPEN_TAG) ||
+                (context->state >= HOXML_STATE_REFERENCE_BEGIN && context->state <= HOXML_STATE_REFERENCE_HEX)) &&
+                context->stack == NULL) {
+            /* Some unforseen bug has led us to a state in which continuing would cause an illegal memory access. */
+            /* Parsing must halt. There is no way to recover. */
+            context->state = HOXML_STATE_ERROR_INTERNAL;
+            return HOXML_ERROR_INTERNAL;
+        }
+
         size_t bytes_remaining = (size_t)(context->xml_length - (context->iterator - context->xml));
         size_t bytes_to_copy = (bytes_remaining <= 4 ? bytes_remaining : 4) - context->stream_length;
         if (bytes_to_copy < 4)

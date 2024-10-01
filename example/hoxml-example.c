@@ -28,6 +28,14 @@ int main(int argc, char** argv) {
         /* error. Parsing is finished when an (unrecoverable) error code or the "end of document" code is returned. */
         switch (code) {
         /* Error code cases: */
+        case HOXML_ERROR_INVALID_INPUT:
+            fprintf(stderr, " A parameter passed to hoxml_parse() was unacceptable\n");
+            exit_status = EXIT_FAILURE;
+            break;
+        case HOXML_ERROR_INTERNAL:
+            fprintf(stderr, " hoxml ran into an internal error\n");
+            exit_status = EXIT_FAILURE;
+            break;
         case HOXML_ERROR_INSUFFICIENT_MEMORY:
             fprintf(stderr, " Not enough memory\n");
             exit_status = EXIT_FAILURE;
