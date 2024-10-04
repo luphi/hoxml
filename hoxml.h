@@ -67,8 +67,6 @@ typedef enum {
     HOXML_PROCESSING_INSTRUCTION_END /**< A processing instruction ended and its content is available. */
 } hoxml_code_t;
 
-typedef struct hoxml_node hoxml_node_t; /* Forward declaration */
-
 /**
  * Holds context and state information needed by hoxml. Some of this information is public and holds the data parsed
  * from XML content (element names, attribute names and values, etc.) but some is private and only makes sense to hoxml.
@@ -91,7 +89,7 @@ typedef struct {
     char* buffer; /* Memory allocated for hoxml to use */
     size_t buffer_length; /* Amount of memory allocated for hoxml */
     char* reference_start; /* Pointer to a location on the stack where a reference entity string (e.g "&lt;") began */
-    hoxml_node_t* stack; /* Pointer to the current node in the stack-like structure of elements */
+    char* stack; /* Pointer to the current node in the stack-like structure of elements */
     int8_t state; /* Current parsing state, determines which characters are acceptable and when to return */
     int8_t post_state; /* When not "none" this indicates a past state that has a cleanup step */
     int8_t return_state; /* State to return to after the processing of a comment or reference has finished */
@@ -239,7 +237,8 @@ enum {
     HOXML_REF_TYPE_HEX /* A value of a character given as a hexadecimal number */
 };
 
-typedef struct hoxml_node {
+typedef struct _hoxml_node_t hoxml_node_t;
+typedef struct _hoxml_node_t {
     hoxml_node_t* parent; /* Points to the parent node, or NULL if this is the root */
     char* end; /* Points to the last byte of this node's data */
     uint8_t flags; /* May contain any number of the flags defined in hoxml_node_flags */
@@ -255,6 +254,7 @@ typedef struct {
 #ifndef UINT32_MAX /* Defined in stdint.h with later revisions of C and C++ but not for some earlier ones */
     #define UINT32_MAX (0xffffffff)
 #endif
+#define HOXML_STACK ((hoxml_node_t*)context->stack)
 #define HOXML_TO_LOWER(c) (c >= 'A' && c <= 'Z' ? c + 32 : c)
 #define HOXML_IS_NEW_LINE(c) (c == 0x0A || c == 0x0D)
 #define HOXML_IS_WHITESPACE(c) (c == 0x20 || c == 0x09 || HOXML_IS_NEW_LINE(c))
@@ -308,7 +308,7 @@ HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, const size
         return;
 
     /* Reassign the end and parent pointers of each node, beginning at the tail and iterate to the head */
-    hoxml_node_t* node = context->stack;
+    hoxml_node_t* node = HOXML_STACK;
     while (node != NULL) {
         hoxml_node_t* parent = node->parent;
         node->end = buffer + (node->end - context->buffer);
@@ -329,7 +329,7 @@ HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, const size
     if (context->reference_start != NULL)
         context->reference_start = buffer + ((char*)context->reference_start - context->buffer);
     if (context->stack != NULL)
-        context->stack = (hoxml_node_t*)(buffer + ((char*)context->stack - context->buffer));
+        context->stack = buffer + ((char*)context->stack - context->buffer);
 
     memset(buffer, 0, buffer_length); /* Fill the new buffer with zeroes */
     memcpy(buffer, context->buffer, context->buffer_length); /* Copy the entire, current buffer to the new buffer */
@@ -495,16 +495,16 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
             HOXML_LOG_STATE("HOXML_STATE_TAG_BEGIN")
             if (c.value == '?') { /* "<?" begins a processing instruction */
                 context->state = HOXML_STATE_PROCESSING_INSTRUCTION_BEGIN;
-                context->stack->flags |= HOXML_FLAG_PROCESSING_INSTRUCTION; /* Apply the PI flag to this node */
+                HOXML_STACK->flags |= HOXML_FLAG_PROCESSING_INSTRUCTION; /* Apply the PI flag to this node */
             } else if (c.value == '/') /* "</" begins an end tag */
-                context->stack->flags |= HOXML_FLAG_END_TAG; /* Apply the end tag flag to this node */
+                HOXML_STACK->flags |= HOXML_FLAG_END_TAG; /* Apply the end tag flag to this node */
             else if (c.value == '!') /* "<!--" = comment, "<![CDATA[" = CDATA, and "<!DOCTYPE" = DTD */
                 context->state = HOXML_STATE_COMMENT_CDATA_OR_DTD_BEGIN;
             else if (HOXML_IS_NAME_START_CHAR(c.value)) {
                 hoxml_append_character(context, c);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the character was successful */
                     context->state = HOXML_STATE_ELEMENT_NAME1;
-                    context->tag = &(context->stack->tag); /* The tag's name string will began here */
+                    context->tag = &(HOXML_STACK->tag); /* The tag's name string will began here */
                 }
             } else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
@@ -516,12 +516,12 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
                 if (context->state >= HOXML_STATE_NONE) /* If appending the terminator was successful */
                     return hoxml_end_tag(context);
             } else if (c.value == '/') { /* The tag is an empty element, AKA self-closed tag (e.g. "<tag/>") */
-                if (context->stack->flags & HOXML_FLAG_END_TAG) /* If it's also a regular close tag (e.g. "</tag/>") */
+                if (HOXML_STACK->flags & HOXML_FLAG_END_TAG) /* If it's also a regular close tag (e.g. "</tag/>") */
                     context->state = HOXML_STATE_ERROR_SYNTAX;
                 else {
                     hoxml_append_terminator(context);
                     if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
-                        context->stack->flags |= HOXML_FLAG_EMPTY_ELEMENT; /* Apply the empty element flag */
+                        HOXML_STACK->flags |= HOXML_FLAG_EMPTY_ELEMENT; /* Apply the empty element flag */
                         return HOXML_ELEMENT_BEGIN;
                     }
                 }
@@ -529,7 +529,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
                 hoxml_append_terminator(context);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
                     context->state = HOXML_STATE_ELEMENT_NAME2;
-                    context->stack->flags |= HOXML_FLAG_BEGUN; /* Indicate "element begun" has already been returned */
+                    HOXML_STACK->flags |= HOXML_FLAG_BEGUN; /* Indicate "element begun" has already been returned */
                     return HOXML_ELEMENT_BEGIN;
                 }
             } else if (HOXML_IS_NAME_CHAR(c.value))
@@ -544,23 +544,23 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
                     /* If "element begun" has already been returned for this element and this element is not */
                     /* self-closing (i.e. the element has the form "<tag ... />" where "..." may be attributes) */
-                    if (context->stack->flags & HOXML_FLAG_BEGUN &&
-                            !(context->stack->flags & HOXML_FLAG_EMPTY_ELEMENT)) {
+                    if (HOXML_STACK->flags & HOXML_FLAG_BEGUN &&
+                            !(HOXML_STACK->flags & HOXML_FLAG_EMPTY_ELEMENT)) {
                         hoxml_end_tag(context); /* Do not return, "element begun" was returned when the name ended */
                         hoxml_post_state_cleanup(context); /* Because hoxml_parse() won't be called, clean up now */
                     } else
                         return hoxml_end_tag(context);
                 }
             } else if (c.value == '/') { /* The tag is an empty element, AKA self-closed tag (e.g. "<tag/>") */
-                if (context->stack->flags & HOXML_FLAG_END_TAG) /* If it's also a regular close tag (e.g. "</tag/>") */
+                if (HOXML_STACK->flags & HOXML_FLAG_END_TAG) /* If it's also a regular close tag (e.g. "</tag/>") */
                     context->state = HOXML_STATE_ERROR_SYNTAX;
                 else
-                    context->stack->flags |= HOXML_FLAG_EMPTY_ELEMENT; /* Apply the empty element flag to this node */
+                    HOXML_STACK->flags |= HOXML_FLAG_EMPTY_ELEMENT; /* Apply the empty element flag to this node */
             } else if (HOXML_IS_NAME_START_CHAR(c.value)) { /* First letter of an attribute name */
                 hoxml_append_character(context, c);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the character was successful */
                     context->state = HOXML_STATE_ATTRIBUTE_NAME1;
-                    context->attribute = context->stack->end; /* The attribute's name string began here */
+                    context->attribute = HOXML_STACK->end; /* The attribute's name string began here */
                 }
             } else if (!HOXML_IS_WHITESPACE(c.value))
                 context->state = HOXML_STATE_ERROR_SYNTAX;
@@ -592,17 +592,17 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
             if (c.value == '"' || c.value == '\'') {
                 context->state = HOXML_STATE_ATTRIBUTE_VALUE;
                 if (c.value == '"')
-                    context->stack->flags |= HOXML_FLAG_DOUBLE_QUOTE; /* Apply the double quote flag to this node */
+                    HOXML_STACK->flags |= HOXML_FLAG_DOUBLE_QUOTE; /* Apply the double quote flag to this node */
                 else
-                    context->stack->flags &= ~HOXML_FLAG_DOUBLE_QUOTE; /* Remove the double quote flag from this node */
-                context->value = context->stack->end + 1; /* The attribute's value string will begin here */
+                    HOXML_STACK->flags &= ~HOXML_FLAG_DOUBLE_QUOTE; /* Remove the double quote flag from this node */
+                context->value = HOXML_STACK->end + 1; /* The attribute's value string will begin here */
             }
             else if (!HOXML_IS_WHITESPACE(c.value))
                 context->state = HOXML_STATE_ERROR_SYNTAX;
             break;
         case HOXML_STATE_ATTRIBUTE_VALUE: /* A quotation, single or double, was found after an attribute name and '=' */
             HOXML_LOG_STATE("HOXML_STATE_ATTRIBUTE_VALUE")
-            if ((context->stack->flags & HOXML_FLAG_DOUBLE_QUOTE && c.value == '"') || (!(context->stack->flags &
+            if ((HOXML_STACK->flags & HOXML_FLAG_DOUBLE_QUOTE && c.value == '"') || (!(HOXML_STACK->flags &
                     HOXML_FLAG_DOUBLE_QUOTE) && c.value == '\'')) { /* The quotation marks match, value is done */
                 hoxml_append_terminator(context);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the terminator was successful */
@@ -613,7 +613,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
             } else if (c.value == '&') {
                 context->state = HOXML_STATE_REFERENCE_BEGIN;
                 context->return_state = HOXML_STATE_ATTRIBUTE_VALUE; /* Return to this attribute value state later */
-            } else if (HOXML_IS_VALUE_CHAR_DATA(context->stack->flags, c.value))
+            } else if (HOXML_IS_VALUE_CHAR_DATA(HOXML_STACK->flags, c.value))
                 hoxml_append_character(context, c);
             else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
@@ -742,8 +742,8 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
                 uint8_t bytes = context->encoding >= HOXML_ENC_UTF_16_BE ? 4 : 2;
                 /* The 'end' pointer is currently pointing at the last byte, the second ']' or its latter half if */
                 /* using UTF-16. To remove the "]]" we replace them with zeroes. */
-                memset(context->stack->end - bytes + 1, 0, bytes);
-                context->stack->end -= bytes;
+                memset(HOXML_STACK->end - bytes + 1, 0, bytes);
+                HOXML_STACK->end -= bytes;
             } else {
                 hoxml_append_character(context, c);
                 if (context->state >= HOXML_STATE_NONE) /* If appending the character was successful */
@@ -751,7 +751,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
             } break;
         case HOXML_STATE_REFERENCE_BEGIN: /* Found an '&' in content or a value, looking for '#', ';', or characters */
             HOXML_LOG_STATE("HOXML_STATE_REFERENCE_BEGIN")
-            context->reference_start = context->stack->end + 1; /* Point to the first byte for comparisons later */
+            context->reference_start = HOXML_STACK->end + 1; /* Point to the first byte for comparisons later */
             if (c.value == '#')
                 context->state = HOXML_STATE_REFERENCE_NUMERIC;
             /* The predefined entities are "amp", "lt", "gt", "quot", and "apos". Check for just their first letters. */
@@ -798,7 +798,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
                 hoxml_append_character(context, c);
                 if (context->state >= HOXML_STATE_NONE) { /* If appending the character was successful */
                     context->state = HOXML_STATE_PROCESSING_INSTRUCTION_TARGET1;
-                    context->tag = &context->stack->tag; /* The processing instruction's target string began here */
+                    context->tag = &(HOXML_STACK->tag); /* The processing instruction's target string began here */
                 }
             } else
                 context->state = HOXML_STATE_ERROR_SYNTAX;
@@ -806,8 +806,8 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
         case HOXML_STATE_PROCESSING_INSTRUCTION_TARGET1: /* Found a name char after "<?", looking for more name chars */
             HOXML_LOG_STATE("HOXML_STATE_PROCESSING_INSTRUCTION_TARGET1")
             if (HOXML_IS_WHITESPACE(c.value)) { /* A whitespace marks an end of a target and beginning of content */
-                if (hoxml_strcmp(&context->stack->tag, context->encoding, "xml", HOXML_ENC_UNKNOWN,
-                        HOXML_CASE_INSENSITIVE) && context->stack->parent != NULL) {
+                if (hoxml_strcmp(&(HOXML_STACK->tag), context->encoding, "xml", HOXML_ENC_UNKNOWN,
+                        HOXML_CASE_INSENSITIVE) && HOXML_STACK->parent != NULL) {
                     /* The document declaration (e.g. <?xml encoding="UTF-8"?>) must come before the first element */
                     context->state = HOXML_STATE_ERROR_INVALID_DOCUMENT_DECLARATION;
                     return HOXML_ERROR_INVALID_DOCUMENT_DECLARATION;
@@ -873,7 +873,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
                     context->state = HOXML_STATE_PROCESSING_INSTRUCTION_END;
             } else {
                 if (context->content == NULL) /* If this is the first character of the PI's content */
-                    context->content = context->stack->end + 1; /* The PI's content string will begin here */
+                    context->content = HOXML_STACK->end + 1; /* The PI's content string will begin here */
                 hoxml_append_character(context, c);
             } break;
         case HOXML_STATE_DTD_BEGIN1: /* Found a 'D' after "<!", looking for 'O' */
@@ -989,7 +989,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
 void hoxml_push_stack(hoxml_context_t* context) {
     /* If "allocating" a new node would overflow the buffer */
     if ((context->stack == NULL && sizeof(hoxml_node_t) >= context->buffer_length) || (context->stack != NULL &&
-            context->stack->end + 1 + sizeof(hoxml_node_t) >= context->buffer + context->buffer_length)) {
+            HOXML_STACK->end + 1 + sizeof(hoxml_node_t) >= context->buffer + context->buffer_length)) {
         context->error_return_state = context->state;
         context->state = HOXML_STATE_ERROR_INSUFFICIENT_MEMORY;
         return;
@@ -999,13 +999,13 @@ void hoxml_push_stack(hoxml_context_t* context) {
     if (context->stack == NULL)/* If pushing the root node */
         node = (hoxml_node_t*) context->buffer; /* Place the new node at the beginning of the buffer */
     else
-        node = (hoxml_node_t*)(context->stack->end + 1);
+        node = (hoxml_node_t*)(HOXML_STACK->end + 1);
     if (node != NULL) {
         /* Assign initial values to the node */
-        node->parent = context->stack; /* This new node's parent is the previous stack node */
-        node->end = &node->tag - 1; /* Point to the last byte used by the node, -1 because no tag has been copied yet */
+        node->parent = HOXML_STACK; /* This new node's parent is the previous stack node */
+        node->end = &(node->tag) - 1; /* Point to the last byte of the node, -1 because no tag has been copied yet */
     }
-    context->stack = node;
+    context->stack = (char*)node;
 }
 
 /* Pop the head node from the stack */
@@ -1014,8 +1014,8 @@ void hoxml_pop_stack(hoxml_context_t* context) {
         return;
 
     /* Reassign the stack (head) pointer so that it now points to the parent of the node about to be popped */
-    hoxml_node_t* popped_node = context->stack;
-    context->stack = popped_node->parent;
+    hoxml_node_t* popped_node = HOXML_STACK;
+    context->stack = (char*)popped_node->parent;
 
     /* Overwrite the memory used by this node with zeroes */
     context->tag = context->attribute = context->value = context->content = NULL; /* TODO: move somewhere else */
@@ -1024,34 +1024,34 @@ void hoxml_pop_stack(hoxml_context_t* context) {
 
 /* Attempt to add the given character to the end of the stack's current head node */
 void hoxml_append_character(hoxml_context_t* context, hoxml_character_t c) {
-    context->stack->flags &= ~HOXML_FLAG_TERMINATED;
+    HOXML_STACK->flags &= ~HOXML_FLAG_TERMINATED;
 
-    if (context->stack->end + c.bytes >= context->buffer + context->buffer_length) {
+    if (HOXML_STACK->end + c.bytes >= context->buffer + context->buffer_length) {
         context->error_return_state = context->state;
         context->state = HOXML_STATE_ERROR_INSUFFICIENT_MEMORY;
         return;
     }
 
-    memcpy(context->stack->end + 1, &c.raw, c.bytes); /* Copy the character to the stack */
-    context->stack->end += c.bytes; /* Redirect the end pointer to the new end just after the appended character */
+    memcpy(HOXML_STACK->end + 1, &(c.raw), c.bytes); /* Copy the character to the stack */
+    HOXML_STACK->end += c.bytes; /* Redirect the end pointer to the new end just after the appended character */
 }
 
 /* Attempt to add a null terminator to the end of the stack's current head node */
 void hoxml_append_terminator(hoxml_context_t* context) {
-    if (context->stack->flags & HOXML_FLAG_TERMINATED) /* If the node's current string is already terminated */
+    if (HOXML_STACK->flags & HOXML_FLAG_TERMINATED) /* If the node's current string is already terminated */
         return; /* To avoid adding additional terminators and using more bytes than expected, do nothing */
-    context->stack->flags |= HOXML_FLAG_TERMINATED;
+    HOXML_STACK->flags |= HOXML_FLAG_TERMINATED;
 
     /* If the document is encoded with UTF-16, two bytes will be appended. One byte otherwise. */
     uint8_t bytes = context->encoding >= HOXML_ENC_UTF_16_BE ? 2 : 1;
-    if (context->stack->end + bytes >= context->buffer + context->buffer_length) {
+    if (HOXML_STACK->end + bytes >= context->buffer + context->buffer_length) {
         context->error_return_state = context->state;
         context->state = HOXML_STATE_ERROR_INSUFFICIENT_MEMORY;
         return;
     }
 
-    memset(context->stack->end + 1, 0, bytes); /* Copy the terminator to the stack */
-    context->stack->end += bytes; /* Redirect the end pointer to the new end just after the appended terminator */
+    memset(HOXML_STACK->end + 1, 0, bytes); /* Copy the terminator to the stack */
+    HOXML_STACK->end += bytes; /* Redirect the end pointer to the new end just after the appended terminator */
 }
 
 /* Perform the steps needed to decode and clean up after a character or entity reference given the context obect and */
@@ -1104,8 +1104,8 @@ void hoxml_end_reference(hoxml_context_t* context, uint8_t type) {
 
     /* Remove the reference's string from the buffer. For example, "&lt;" would result in "lt" being stored so it */
     /* could be parsed here. It should now be removed from the buffer. */
-    memset(context->reference_start, 0, context->stack->end - context->reference_start + 1);
-    context->stack->end = context->reference_start - 1;
+    memset(context->reference_start, 0, HOXML_STACK->end - context->reference_start + 1);
+    HOXML_STACK->end = context->reference_start - 1;
     context->reference_start = NULL;
     hoxml_append_character(context, c); /* Append the character being referenced */
     /* No need for any checks against the buffer length. In all cases, more bytes were removed just now than added. */
@@ -1124,7 +1124,7 @@ void hoxml_begin_tag(hoxml_context_t* context) {
 hoxml_code_t hoxml_end_tag(hoxml_context_t* context) {
     context->state = HOXML_STATE_OPEN_TAG;
     context->post_state = HOXML_POST_STATE_TAG_END; /* Common to three of the four possible cases */
-    hoxml_node_t* node = context->stack;
+    hoxml_node_t* node = HOXML_STACK;
     hoxml_node_t* parent = node->parent;
     if (node->flags & HOXML_FLAG_END_TAG) { /* True for e.g. </tag> and <tag/> */
         if (parent == NULL || hoxml_strcmp(&(node->tag), context->encoding, &(parent->tag), context->encoding,
@@ -1156,7 +1156,7 @@ uint8_t hoxml_post_state_cleanup(hoxml_context_t* context) {
             uint8_t was_document_or_document_type_declaration = 0;
             /* If the processing instruction flag is applied (i.e. this is a PI) and the PI's target is the reserved */
             /* "xml" target, or some other case variant of it */
-            if (context->stack->flags & HOXML_FLAG_PROCESSING_INSTRUCTION && hoxml_strcmp(&(context->stack->tag),
+            if (HOXML_STACK->flags & HOXML_FLAG_PROCESSING_INSTRUCTION && hoxml_strcmp(&(HOXML_STACK->tag),
                     context->encoding, "xml", HOXML_ENC_UNKNOWN, HOXML_CASE_INSENSITIVE)) {
                 context->state = HOXML_STATE_NONE; /* Return to the initial state as if nothing happened */
                 was_document_or_document_type_declaration = 1;
@@ -1167,8 +1167,8 @@ uint8_t hoxml_post_state_cleanup(hoxml_context_t* context) {
             break;
         } case HOXML_POST_STATE_ATTRIBUTE_END: /* Remove the most recent attribute and value strings from the buffer */
             /* Zero the memory from the end pointer to the byte at which the attribute's name begins */
-            memset(context->attribute, 0, context->stack->end - (char*)context->attribute + 1);
-            context->stack->end = context->attribute - 1;
+            memset(context->attribute, 0, HOXML_STACK->end - (char*)context->attribute + 1);
+            HOXML_STACK->end = context->attribute - 1;
             /* With these public properties now pointing to zeroes, nullify them so there's no confusion */
             context->attribute = context->value = NULL;
             break;
