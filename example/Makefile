@@ -1,7 +1,7 @@
 # The compiler to use. "gcc" works for most *nix systems and Windows with MinGW
 CC:=gcc
 # Compilation flags, intended for gcc in this case. Among these, -I.. and -std=c89 are important. The former adds the
-# folder one level up as an an include directory and the latter indicates the C89 standard (a.k.a. ANSI C).
+# folder one level up as an include directory and the latter indicates the C89 standard (a.k.a. ANSI C).
 CFLAGS:=-I.. -O1 -s -Wall -std=c89
 
 # If building on Windows (MinGW)

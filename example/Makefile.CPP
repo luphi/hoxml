@@ -1,7 +1,7 @@
 # The compiler to use. "g++" works for most *nix systems and Windows with MinGW
 CC:=g++
 # Compilation flags, intended for gcc in this case. Among these, -I.. and -std=c++98 are important. The former adds the
-# folder one level up as an an include directory and the latter indicates the C++98 standard. hoxml is written in C89.
+# folder one level up as an include directory and the latter indicates the C++98 standard. hoxml is written in C89.
 CFLAGS:=-I.. -O1 -s -Wall -std=c++98
 
 # If building on Windows (MinGW)
