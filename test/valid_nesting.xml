@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<matryoshka>
+    <huge>
+        <large>
+            <medium>
+               <small>
+                  <tiny>
+                      <doll/>
+                  </tiny>
+               </small>
+            </medium>
+        </large>
+    </huge>
+</matryoshka>
+

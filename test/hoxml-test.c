@@ -5,7 +5,7 @@
 /* #define HOXML_DEBUG */
 #include "hoxml.h"
 
-#define NUM_DOCUMENTS 18
+#define NUM_DOCUMENTS 19
 #define NUM_INVALID_DOCUMENTS 8
 #define CONTENT_BUFFER_LENGTH 75 /* Small, odd number to force reallocation and to trigger "unexpected EoF" errors */
                                  /* halfway through UTF-16 characters */
@@ -29,9 +29,10 @@ int main(int argc, char** argv) {
     documents[12] = "valid_encoding_utf8.xml";
     documents[13] = "valid_encoding_utf16be.xml";
     documents[14] = "valid_encoding_utf16le.xml";
-    documents[15] = "valid_tilemap.tmx";
-    documents[16] = "valid_little_bit_of_everything.xml";
+    documents[15] = "valid_little_bit_of_everything.xml";
+    documents[16] = "valid_nesting.xml";
     documents[17] = "valid_references.xml";
+    documents[18] = "valid_tilemap.tmx";
 
     int from = 0, to = NUM_DOCUMENTS - 1;
     if (argc > 1) /* If a specific index was passed as a CLI argument */

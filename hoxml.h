@@ -79,6 +79,7 @@ typedef struct {
     char* content; /**< Holds the current element's content. This means all character data found, including spaces. */
     uint32_t line; /**< The line currently being parsed. Lines are determined by line feeds and carriage returns. */
     uint32_t column; /**< The column, on the current line, of the character last parsed. */
+    uint32_t depth; /**< The nested level of elements. Assigned with the level in which the element was found. */
 
     /* Private (for internal use) */
     uint8_t is_initialized; /* Set to true by hoxml_init() and indicates this context is safe to use */
@@ -91,7 +92,7 @@ typedef struct {
     char* reference_start; /* Pointer to a location on the stack where a reference entity string (e.g "&lt;") began */
     char* stack; /* Pointer to the current node in the stack-like structure of elements */
     int8_t state; /* Current parsing state, determines which characters are acceptable and when to return */
-    int8_t post_state; /* When not "none" this indicates a past state that has a cleanup step */
+    int8_t post_state; /* When not "none" this indicates a post-state that has a cleanup step */
     int8_t return_state; /* State to return to after the processing of a comment or reference has finished */
     int8_t error_return_state; /* State to return to after recovering from an error */
     uint32_t stream; /* Holds the current character, whole or partial. May contain bytes from different strings. */
@@ -209,12 +210,14 @@ enum {
 };
 
 enum {
-    HOXML_FLAG_END_TAG = 0x01, /* 0000 0001 - the node is a dedicated end tag (not an empty element) */
-    HOXML_FLAG_EMPTY_ELEMENT = 0x02, /* 0000 0010 - the node is an empty element */
-    HOXML_FLAG_PROCESSING_INSTRUCTION = 0x04, /* 0000 0100 - the node is a processing instruction */
-    HOXML_FLAG_DOUBLE_QUOTE = 0x08, /* 0000 1000 - the value string being parsed was opened with a double quote (") */
-    HOXML_FLAG_TERMINATED = 0x10, /* 0001 0000 - the node's current string (tag, attribute, etc.) is null terminated */
-    HOXML_FLAG_BEGUN = 0x20 /* 0010 0000 - the "element begun" code was already returned for this node */
+    HOXML_FLAG_END_TAG = 1, /* the node is a dedicated end tag (not an empty element) */
+    HOXML_FLAG_EMPTY_ELEMENT = 2, /* the node is an empty element */
+    HOXML_FLAG_PROCESSING_INSTRUCTION = 4, /* the node is a processing instruction */
+    HOXML_FLAG_DOUBLE_QUOTE = 8, /* the value string being parsed was opened with a double quote (") */
+    HOXML_FLAG_TERMINATED = 16, /* the node's current string (tag, attribute, etc.) is null terminated */
+    HOXML_FLAG_BEGUN = 32, /* the "element begun" code was already returned for this node */
+    HOXML_FLAG_INCREMENT_DEPTH = 64, /* context object's depth value should increase by one next hoxml_parse() */
+    HOXML_FLAG_DECREMENT_DEPTH = 128 /* context object's depth value should decrease by one next hoxml_parse() */
 };
 
 enum {
@@ -343,6 +346,21 @@ HOXML_DECL void hoxml_realloc(hoxml_context_t* context, char* buffer, const size
 HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, const size_t xml_length) {
     if (context == NULL || context->is_initialized == 0 || xml == NULL || xml_length == 0)
         return HOXML_ERROR_INVALID_INPUT;
+
+    if (HOXML_STACK != NULL)
+    {
+        if (HOXML_STACK->flags & HOXML_FLAG_INCREMENT_DEPTH) /* If an element began, increasing nesting */
+        {
+            context->depth += 1;
+            HOXML_STACK->flags &= ~HOXML_FLAG_INCREMENT_DEPTH; /* Clear the flag */
+        }
+
+        if (HOXML_STACK->flags & HOXML_FLAG_DECREMENT_DEPTH) /* If an element ended, decreasing nesting */
+        {
+            context->depth -= 1;
+            HOXML_STACK->flags &= ~HOXML_FLAG_DECREMENT_DEPTH; /* Clear the flag */
+        }
+    }
 
     switch (context->state) {
         /* Two errors are recoverable: HOXML_ERROR_INSUFFICIENT_MEMORY and HOXML_ERROR_UNEXPECTED_EOF. The former can */
@@ -1124,7 +1142,7 @@ hoxml_code_t hoxml_end_tag(hoxml_context_t* context) {
     context->post_state = HOXML_POST_STATE_TAG_END; /* Common to three of the four possible cases */
     hoxml_node_t* node = HOXML_STACK;
     hoxml_node_t* parent = node->parent;
-    if (node->flags & HOXML_FLAG_END_TAG) { /* True for e.g. </tag> and <tag/> */
+    if (node->flags & HOXML_FLAG_END_TAG) { /* True for e.g. </tag> but not <tag/> */
         if (parent == NULL || hoxml_strcmp(&(node->tag), context->encoding, &(parent->tag), context->encoding,
                 HOXML_CASE_SENSITIVE) == 0) { /* If there was preceeding open tag or there is but it doesn't match */
             context->state = HOXML_STATE_ERROR_TAG_MISMATCH;
@@ -1136,6 +1154,8 @@ hoxml_code_t hoxml_end_tag(hoxml_context_t* context) {
             context->content = context->tag + hoxml_strlen(context->tag, context->encoding);
             /* ...which may be either one or two bytes, depending on encoding */
             context->content += (context->encoding >= HOXML_ENC_UTF_16_BE ? 2 : 1);
+             /* Closing an element means one less level of nesting so decrement the depth after returning */
+            HOXML_STACK->flags |= HOXML_FLAG_DECREMENT_DEPTH;
             return HOXML_ELEMENT_END;
         }
     } else if (node->flags & HOXML_FLAG_EMPTY_ELEMENT) /* Self-closing/empty element (e.g. "<tag/>") */
@@ -1144,6 +1164,8 @@ hoxml_code_t hoxml_end_tag(hoxml_context_t* context) {
         return HOXML_PROCESSING_INSTRUCTION_END;
     /* The only remaining case is an open tag (e.g. "<tag>") and we expect a matching close tag later */
     context->post_state = HOXML_STATE_NONE; /* For this fourth case, of four possible, there is no clean up */
+    /* Opening an element means one more level of nesting so increment the depth after returning */
+    HOXML_STACK->flags |= HOXML_FLAG_INCREMENT_DEPTH;
     return HOXML_ELEMENT_BEGIN;
 }
 
