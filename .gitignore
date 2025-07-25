@@ -8,6 +8,7 @@
 
 # Visual Studio artifacts
 .vs/
+.vscode/
 *.rsuser
 *.suo
 *.user
