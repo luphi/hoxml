@@ -409,7 +409,7 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
         context->iterator = xml;
     }
 
-    /* Remember some context variables in case we hit an unexpected EoF and need undo an iteration */
+    /* Remember some context variables in case we hit an unexpected EoF and need to undo an iteration */
     const char* previous_iterator = context->iterator;
     size_t previous_stream_length = context->stream_length;
     while (context->state >= HOXML_STATE_NONE && context->state <= HOXML_STATE_DONE) {
@@ -1086,7 +1086,7 @@ void hoxml_append_terminator(hoxml_context_t* context) {
         return;
     }
 
-    memset(HOXML_STACK->end + 1, 0, bytes); /* Copy the terminator to the stack */
+    memset(HOXML_STACK->end + 1, '\0', bytes); /* Copy the terminator to the stack */
     HOXML_STACK->end += bytes; /* Redirect the end pointer to the new end just after the appended terminator */
 }
 
