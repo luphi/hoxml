@@ -1,10 +1,10 @@
-CC:=gcc
-CFLAGS:=-I.. -g -O1 -s -Wall -ansi
+CC := gcc
+CFLAGS := -I.. -g -s -Wall -ansi
 
 ifeq ($(OS),Windows_NT)
-	EXEC:=hoxml-test.exe
+	EXEC := hoxml-test.exe
 else
-	EXEC:=hoxml-test.bin
+	EXEC := hoxml-test.bin
 endif
 
 .PHONY: clean all
