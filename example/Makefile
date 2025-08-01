@@ -20,7 +20,7 @@ endif
 
 # Target for building a release executable that excludes debug symbols and uses a high optimization level
 release: hoxml-example.c
-	$(CC) $(CFLAGS) -O3 -s hoxml-example.c -o $(EXEC)
+	$(CC) $(CFLAGS) -O3 hoxml-example.c -o $(EXEC)
 
 # Target for building a debug executable that includes debug symbols
 debug: hoxml-example.c

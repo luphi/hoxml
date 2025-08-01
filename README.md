@@ -5,7 +5,7 @@ Header-Only XML parser written in portable ANSI C. *hoxml* is non-validating but
 
 ## Features
 
-- Portable ANSI C (C89), tested with GCC (Windows and Linux) and MSVC
+- Portable ANSI C (C89), tested with GCC (Windows and Linux), Clang (macOS), and MSVC
 - Supports UTF-8, UTF-16BE, and UTF-16LE including their BOMs
 - Supports entities (`&apos;`, `&#x74;`, etc.), `<![CDATA[]]>` sections, comments, and processing instructions
 - Allows content to be passed in parts
