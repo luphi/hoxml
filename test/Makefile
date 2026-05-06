@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -I.. -g -Wall -ansi
+CFLAGS := -I.. -g -Wall -Wextra -Wpedantic -ansi
 
 ifeq ($(OS),Windows_NT)
 	EXEC := hoxml-test.exe

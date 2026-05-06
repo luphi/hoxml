@@ -2,7 +2,7 @@
 CC := g++
 # Compilation flags, intended for gcc in this case. Among these, -I.. and -ansi are important. The former adds the
 # folder one level up as an include directory and the latter indicates the ANSI C++ standard.
-CFLAGS := -I.. -Wall -ansi
+CFLAGS := -I.. -Wall -Wextra -Wpedantic -ansi
 
 # If building on Windows (MinGW)
 ifeq ($(OS),Windows_NT)
