@@ -5,24 +5,29 @@
 #define HOXML_IMPLEMENTATION
 #include "hoxml.h"
 
-int main(int argc, char** argv) {
+int main(void) {
+    const char* content;
+    size_t content_length;
+    hoxml_context_t hoxml_context;
+    void* buffer;
+    int exit_status;
+    hoxml_code_t code;
+
     /* XML content to parse. A string constant is used to keep this simple but content from disk would be typical. */
-    const char* content = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-                          "<the_lord_of_the_rings>\n"
-                          "    <book>The Fellowship of the Ring</book>\n"
-                          "    <book>The Two Towers</book>\n"
-                          "    <book>The Return of the King</book>\n"
-                          "</the_lord_of_the_rings>";
-    size_t content_length = strlen(content);
+    content = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+              "<the_lord_of_the_rings>\n"
+              "    <book>The Fellowship of the Ring</book>\n"
+              "    <book>The Two Towers</book>\n"
+              "    <book>The Return of the King</book>\n"
+              "</the_lord_of_the_rings>";
+    content_length = strlen(content);
 
     /* hoxml initialization. Allocate the context object and buffer then call hoxml_init(). */
-    hoxml_context_t hoxml_context;
-    void* buffer = malloc(content_length * 2);
+    buffer = malloc(content_length * 2);
     hoxml_init(&hoxml_context, buffer, content_length * 2);
 
     /* Loop until the "end of document" code is returned */
-    hoxml_code_t code;
-    int exit_status = EXIT_SUCCESS;
+    exit_status = EXIT_SUCCESS;
     while ((code = hoxml_parse(&hoxml_context, content, content_length)) != HOXML_END_OF_DOCUMENT &&
            exit_status == EXIT_SUCCESS) {
         /* Various codes will be returned as hoxml_parse() finds tags, attributes, content, etc. or runs into an */
@@ -78,9 +83,12 @@ int main(int argc, char** argv) {
             break;
         case HOXML_ELEMENT_END:
             if (hoxml_context.content != NULL) {
+                int is_empty;
+                const char* iterator;
+
                 /* Check the content to see if it only contains whitespace */
-                int is_empty = 1;
-                const char* iterator = hoxml_context.content;
+                is_empty = 1;
+                iterator = hoxml_context.content;
                 while (iterator[0] != '\0') {
                     /* If not a whitespace or newline character */
                     if (iterator[0] != 0x20 && iterator[0] != 0x09 && iterator[0] != 0x0A && iterator[0] != 0x0D) {
