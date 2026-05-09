@@ -32,34 +32,36 @@ As usual with header-only libraries, the implementation's definition can be limi
 
 Allocate *hoxml*'s context object, which holds state and metadata information, and a buffer for hoxml to use.
 ``` c
-hoxml_context_t hoxml_context[1];
-char* buffer = (char*)malloc(1024);
-hoxml_init(hoxml_context, buffer, 1024);
+hoxml_context_t hoxml_context;
+char* buffer;
+buffer = (char*)malloc(1024);
+hoxml_init(&hoxml_context, buffer, 1024);
 ```
 The buffer length needed will depend on the amount of XML content, its depth, and various other minor factors. As a rule of thumb, a buffer equal in length to the content is likley enough. In cases where *hoxml* runs out of memory, more may be allocated (see [Error Recovery](#error-recovery)).
 
 Continually call the parsing function until the *end of document* code is returned or an error code is returned.
 ``` c
 hoxml_code_t code;
-while ((code = hoxml_parse(hoxml_context, content, content_length)) != HOXML_END_OF_DOCUMENT) {
+while ((code = hoxml_parse(&hoxml_context, content, content_length)) != HOXML_END_OF_DOCUMENT) {
     switch (code) {
         case HOXML_ERROR_SYNTAX:
-            fprintf(stderr, "Syntax error on line %d, column %d. Exiting...\n", hoxml_context->line, hoxml_context->column);
+            fprintf(stderr, "Syntax error on line %d, column %d. Exiting...\n", hoxml_context.line,
+                hoxml_context.column);
             return EXIT_FAILURE;
         ...
         case HOXML_END_OF_DOCUMENT:
             return EXIT_SUCCESS;
         case HOXML_ELEMENT_BEGIN:
-            printf("Opened <%s>\n", hoxml_context->tag);
+            printf("Opened <%s>\n", hoxml_context.tag);
             break;
         case HOXML_ELEMENT_END:
-            if (hoxml_context->content != NULL)
-                printf("Closed <%s> with content \"%s\"\n", hoxml_context->tag, hoxml_context->content);
+            if (hoxml_context.content != NULL)
+                printf("Closed <%s> with content \"%s\"\n", hoxml_context.tag, hoxml_context.content);
             else
-                printf("Closed <%s>\n", hoxml_context->tag);
+                printf("Closed <%s>\n", hoxml_context.tag);
             break;
         case HOXML_ATTRIBUTE:
-            printf("Attribute \"%s\" of <%s> has value: %s\n", hoxml_context->attribute, hoxml_context->tag, hoxml_context->value);
+            printf("Attribute \"%s\" of <%s> has value: %s\n", hoxml_context.attribute, hoxml_context.tag, hoxml_context.value);
             break;
         ...
     }
@@ -106,12 +108,13 @@ Of the possible errors, two are recoverable: `HOXML_ERROR_INSUFFICIENT_MEMORY` a
 
 `HOXML_ERROR_INSUFFICIENT_MEMORY` can be recovered by providing a larger buffer to hoxml through the `hoxml_realloc()` function.
 ``` c
-hoxml_context_t hoxml_context[1];
-void* buffer = malloc(1024);
-hoxml_init(hoxml_context, buffer, 1024);
+hoxml_context_t hoxml_context;
+void *buffer, *new_buffer;
+buffer = malloc(1024);
+hoxml_init(&hoxml_context, buffer, 1024);
 /* Given the above initialization, the buffer can be doubled with: */
-void* new_buffer = malloc(2048);
-hoxml_realloc(hoxml_context, new_buffer, 2048);
+new_buffer = malloc(2048);
+hoxml_realloc(&hoxml_context, new_buffer, 2048);
 free(buffer);
 buffer = new_buffer;
 ```
@@ -119,11 +122,12 @@ The next call to `hoxml_parse()` will continue as if nothing happened.
 
 `HOXML_ERROR_UNEXPECTED_EOF` can be recovered by providing the continuation of the XML content to `hoxml_parse()`, assuming it exists.
 ``` c
-const char* first_half = "<root>This is the first half of...";
-const char* second_half = "...a two-part string</root>";
 hoxml_code_t code;
-while ((code = hoxml_parse(hoxml_context, first_half, strlen(first_half))) != HOXML_ERROR_UNEXPECTED_EOF) ;
-while ((code = hoxml_parse(hoxml_context, second_half, strlen(second_half))) != HOXML_END_OF_DOCUMENT) ;
+const char *first_half, *second_half;
+first_half = "<root>This is the first half of...";
+second_half = "...a two-part string</root>";
+while ((code = hoxml_parse(&hoxml_context, first_half, strlen(first_half))) != HOXML_ERROR_UNEXPECTED_EOF) ;
+while ((code = hoxml_parse(&hoxml_context, second_half, strlen(second_half))) != HOXML_END_OF_DOCUMENT) ;
 ```
 
 
