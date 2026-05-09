@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
             is_done_with_document = 0;
             while (is_done_with_document == 0) {
                 hoxml_code_t code;
-                
+
                 code = hoxml_parse(&hoxml_context, content_pointer, bytes_read);
                 if (code < HOXML_END_OF_DOCUMENT) { /* If an error was returned */
                     if (code == HOXML_ERROR_UNEXPECTED_EOF) { /* Recoverable error */
