@@ -380,12 +380,16 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
                 bytes_to_copy = xml_length;
             if (context->stream_length > 0) {
                 /* Adjust the number of bytes to copy to account for possible bytes from a previous string */
-                bytes_to_copy -= context->stream_length;
+                bytes_to_copy = (bytes_to_copy > context->stream_length) ? bytes_to_copy - context->stream_length : 0;
+                if (context->stream_length + bytes_to_copy > sizeof(stream))
+                    bytes_to_copy = sizeof(stream) - context->stream_length;
                 /* Append the new bytes to the previous one(s) */
                 memcpy((char*)&stream + context->stream_length, xml, bytes_to_copy);
             }
             else {
                 /* Copy to the 'stream' under the assumption that all of it can be overwritten */
+                if (bytes_to_copy > sizeof(stream))
+                    bytes_to_copy = sizeof(stream);
                 memcpy(&stream, xml, bytes_to_copy);
             }
             c = hoxml_decode_character((const char*)&stream, xml_length, context->encoding);
@@ -445,12 +449,16 @@ HOXML_DECL hoxml_code_t hoxml_parse(hoxml_context_t* context, const char* xml, c
         if (context->stream_length > 0) {
             /* Adjust the number of bytes to copy to account for possible bytes from a previous XML content string. */
             /* This will be non-zero in the rare case where content is being given in parts. */
-            bytes_to_copy -= context->stream_length;
+            bytes_to_copy = (bytes_to_copy > context->stream_length) ? bytes_to_copy - context->stream_length : 0;
+            if (context->stream_length + bytes_to_copy > sizeof(context->stream))
+                bytes_to_copy = sizeof(context->stream) - context->stream_length;
             /* Append the new bytes to the previous one(s) */
             memcpy((char*)&(context->stream) + context->stream_length, context->iterator, bytes_to_copy);
         }
         else {
             /* Copy to the 'stream' under the assumption that all of it can be overwritten */
+            if (bytes_to_copy > sizeof(context->stream))
+                bytes_to_copy = sizeof(context->stream);
             memcpy(&(context->stream), context->iterator, bytes_to_copy);
         }
         c = hoxml_decode_character((const char*)&(context->stream), bytes_remaining, context->encoding);
